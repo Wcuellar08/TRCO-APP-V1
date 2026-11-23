@@ -3,6 +3,7 @@ import {
 } from '../db.js';
 import { $, esc, toast, confirmAction, downloadFile, toCSV, today } from '../ui.js';
 import { ROLE_LABEL } from '../permissions.js';
+import { autoScanEnabled, setAutoScan } from './sales.js';
 import { bus } from '../bus.js';
 import { buildDemoData } from '../demo.js';
 
@@ -68,6 +69,12 @@ export function render(page) {
       <button class="btn block" id="seed">Cargar datos de ejemplo</button>
       <button class="btn danger block" id="wipe">Borrar todos los datos del demo</button>
     </div>` : ''}
+
+    <div class="section"><h2>Vender</h2></div>
+    <div class="card">
+      <label class="check"><input type="checkbox" id="autoscan" ${autoScanEnabled() ? 'checked' : ''}> Abrir la cámara al tocar Vender (＋)</label>
+      <p class="muted small" style="margin:8px 0 0">Se guarda en este dispositivo. Apágalo si vas a vender prendas sin etiqueta.</p>
+    </div>
 
     <div class="section"><h2>Instalar en iPhone</h2></div>
     <div class="card small muted">
@@ -180,6 +187,10 @@ export function render(page) {
       toast('Datos borrados');
       bus.go('inicio');
     };
+  $('#autoscan', page).onchange = (e) => {
+    setAutoScan(e.target.checked);
+    toast(e.target.checked ? 'La cámara se abrirá al vender' : 'Vender abrirá sin cámara');
+  };
   const logout = $('#logout', page);
   if (logout) logout.onclick = signOut;
 }

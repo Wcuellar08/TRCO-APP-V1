@@ -104,7 +104,22 @@ export function render(page) {
 }
 
 // ───────────────────────── Nueva venta ─────────────────────────
-export function openNewSale({ customerId } = {}) {
+// Preferencia de este dispositivo: abrir la cámara al tocar Vender.
+const AUTO_SCAN_KEY = 'trco-autoscan';
+export function autoScanEnabled() {
+  try {
+    return localStorage.getItem(AUTO_SCAN_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+export function setAutoScan(on) {
+  try {
+    localStorage.setItem(AUTO_SCAN_KEY, on ? 'on' : 'off');
+  } catch {}
+}
+
+export function openNewSale({ customerId, autoScan = false } = {}) {
   if (!can('vender')) return toast('No tienes permiso para registrar ventas', 'error');
   if (!state.products.some((p) => p.active !== false)) {
     toast('Primero agrega productos al inventario');
@@ -182,7 +197,7 @@ export function openNewSale({ customerId } = {}) {
         renderCart();
       };
 
-      $('#scan', root).onclick = () =>
+      const startScan = () =>
         openScanner({
           title: 'Escanear prendas',
           counterLabel: (n) => `${n} agregada${n === 1 ? '' : 's'}`,
@@ -200,6 +215,9 @@ export function openNewSale({ customerId } = {}) {
             };
           },
         });
+      $('#scan', root).onclick = startScan;
+      // Vender (＋) abre la cámara de una vez; al cerrar queda la venta con lo escaneado.
+      if (autoScan) setTimeout(startScan, 60);
 
       const renderPicker = () => {
         const p = productById(pick.productId);

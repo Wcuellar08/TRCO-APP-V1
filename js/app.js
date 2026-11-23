@@ -68,7 +68,7 @@ function shell() {
   });
   $('#tab-sell')?.addEventListener('click', (e) => {
     e.preventDefault();
-    sales.openNewSale();
+    sales.openNewSale({ autoScan: sales.autoScanEnabled() });
   });
 }
 
