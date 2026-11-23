@@ -26,7 +26,7 @@ export const PROD_STATUS = {
   recibido: { label: 'Recibido', cls: 'ok' },
 };
 
-const TABLES = ['settings', 'profiles', 'drops', 'products', 'customers', 'sales', 'sale_items', 'production', 'expenses'];
+const TABLES = ['settings', 'profiles', 'drops', 'products', 'customers', 'sales', 'sale_items', 'production', 'expenses', 'events'];
 
 export const state = {
   user: null,
@@ -40,6 +40,7 @@ export const state = {
   sale_items: [],
   production: [],
   expenses: [],
+  events: [],
 };
 
 const uuid = () =>
@@ -113,11 +114,17 @@ const local = {
     if (t === 'products') d.sale_items.forEach((i) => i.product_id === id && (i.product_id = null));
     this.save();
   },
-  async adjustStock(productId, size, delta) {
-    const p = this.read().products.find((r) => r.id === productId);
-    if (!p) return;
-    p.stock = { ...(p.stock || {}), [size]: (Number(p.stock?.[size]) || 0) + delta };
+  async adjustCounter(t, id, path, delta) {
+    const row = this.read()[t].find((r) => r.id === id);
+    if (!row) return;
+    let obj = row;
+    for (const k of path.slice(0, -1)) obj = obj[k] = { ...(obj[k] || {}) };
+    const last = path[path.length - 1];
+    obj[last] = (Number(obj[last]) || 0) + delta;
     this.save();
+  },
+  async adjustStock(productId, size, delta) {
+    return this.adjustCounter('products', productId, ['stock', size], delta);
   },
   replaceAll(data) {
     // Los usuarios del dispositivo se conservan al cargar datos de ejemplo o un respaldo.
@@ -366,13 +373,16 @@ const cloud = {
     }
   },
   // Suma/resta atómica: si dos personas venden al mismo tiempo, no se pierde nada.
-  async adjustStock(productId, size, delta) {
+  async adjustCounter(t, id, path, delta) {
     const f = await firebase();
     try {
-      await f.updateDoc(f.doc(f.fs, 'products', productId), new f.FieldPath('stock', size), f.increment(delta));
+      await f.updateDoc(f.doc(f.fs, t, id), new f.FieldPath(...path), f.increment(delta));
     } catch (e) {
       if (e?.code !== 'not-found') throw e;
     }
+  },
+  async adjustStock(productId, size, delta) {
+    return this.adjustCounter('products', productId, ['stock', size], delta);
   },
 };
 
@@ -490,6 +500,7 @@ function sortState() {
   state.sales.sort(byDate);
   state.expenses.sort(byDate);
   state.production.sort((a, b) => String(b.ordered_date).localeCompare(String(a.ordered_date)));
+  state.events.sort((a, b) => (a.status === 'cerrado') - (b.status === 'cerrado') || String(b.start_date).localeCompare(String(a.start_date)));
 }
 
 function applySettings() {
@@ -550,16 +561,26 @@ export async function saveSettings(data) {
 // ───────────────────────── Ventas ─────────────────────────
 const consumesStock = (status) => status !== 'cancelado';
 
+// Mueve el stock de las prendas de una venta. Si la prenda salió de la maleta de un
+// evento que sigue abierto, se mueve ahí; si no (o el evento ya cerró), en la bodega.
+async function moveItems(items, eventId, sign) {
+  const ev = eventId && state.events.find((e) => e.id === eventId);
+  const evOpen = ev && ev.status !== 'cerrado';
+  for (const i of items) {
+    if (!i.product_id) continue;
+    if (i.from_event && evOpen) await db.adjustCounter('events', ev.id, ['items', i.product_id, i.size], sign * i.qty);
+    else await db.adjustStock(i.product_id, i.size, sign * i.qty);
+  }
+}
+
 export async function createSale(sale, items) {
   const [saved] = await db.insert('sales', [sale]);
   await db.insert(
     'sale_items',
     items.map((i) => ({ ...i, sale_id: saved.id }))
   );
-  if (consumesStock(sale.status)) {
-    for (const i of items) if (i.product_id) await db.adjustStock(i.product_id, i.size, -i.qty);
-  }
-  await refresh(['sales', 'sale_items', 'products']);
+  if (consumesStock(sale.status)) await moveItems(items, sale.event_id, -1);
+  await refresh(['sales', 'sale_items', 'products', 'events']);
   return saved;
 }
 
@@ -567,24 +588,64 @@ export async function updateSale(id, patch) {
   const prev = state.sales.find((s) => s.id === id);
   await db.update('sales', id, patch);
   if (patch.status && prev && consumesStock(prev.status) !== consumesStock(patch.status)) {
-    const sign = consumesStock(patch.status) ? -1 : 1;
-    for (const i of itemsOf(id)) if (i.product_id) await db.adjustStock(i.product_id, i.size, sign * i.qty);
+    await moveItems(itemsOf(id), prev.event_id, consumesStock(patch.status) ? -1 : 1);
   }
-  await refresh(['sales', 'products']);
+  await refresh(['sales', 'products', 'events']);
 }
 
 export async function deleteSale(id) {
   const prev = state.sales.find((s) => s.id === id);
-  if (prev && consumesStock(prev.status)) {
-    for (const i of itemsOf(id)) if (i.product_id) await db.adjustStock(i.product_id, i.size, i.qty);
-  }
+  if (prev && consumesStock(prev.status)) await moveItems(itemsOf(id), prev.event_id, 1);
   await db.remove('sales', id);
-  await refresh(['sales', 'sale_items', 'products']);
+  await refresh(['sales', 'sale_items', 'products', 'events']);
+}
+
+// ───────────────────────── Eventos (bazares) ─────────────────────────
+// La "maleta" se guarda en el evento: items = lo que queda en el evento,
+// packed = lo que se llevó en total. Meter a la maleta descuenta de la bodega.
+export const eventQty = (ev, pid, size) => Number(ev?.items?.[pid]?.[size]) || 0;
+export const eventPacked = (ev, pid, size) => Number(ev?.packed?.[pid]?.[size]) || 0;
+export const eventUnits = (ev, key = 'items') =>
+  Object.values(ev?.[key] || {}).reduce((s, sizes) => s + Object.values(sizes || {}).reduce((a, n) => a + (Number(n) || 0), 0), 0);
+
+export async function packToEvent(eventId, productId, size, delta) {
+  if (!delta) return;
+  await db.adjustStock(productId, size, -delta);
+  await db.adjustCounter('events', eventId, ['items', productId, size], delta);
+  await db.adjustCounter('events', eventId, ['packed', productId, size], delta);
+}
+
+// Cierre con conteo: lo contado regresa a la bodega; la diferencia queda como faltante.
+export async function closeEvent(eventId, counted) {
+  const ev = state.events.find((e) => e.id === eventId);
+  if (!ev || ev.status === 'cerrado') return;
+  const returned = {};
+  const missing = {};
+  for (const [pid, sizes] of Object.entries(ev.items || {})) {
+    for (const [size, expected] of Object.entries(sizes || {})) {
+      const n = Math.max(0, Number(counted?.[pid]?.[size]) || 0);
+      if (n) {
+        await db.adjustStock(pid, size, n);
+        (returned[pid] ??= {})[size] = n;
+      }
+      const diff = (Number(expected) || 0) - n;
+      if (diff > 0) (missing[pid] ??= {})[size] = diff;
+    }
+  }
+  await db.update('events', eventId, { status: 'cerrado', closed_at: new Date().toISOString(), items: {}, returned, missing });
+  await refresh(['events', 'products']);
 }
 
 export async function adjustStock(productId, size, delta) {
   await db.adjustStock(productId, size, delta);
   await refresh(['products']);
+}
+
+// Cuántas piezas de esta prenda están ahora mismo en eventos abiertos (fuera de bodega).
+export function inEvents(productId, size) {
+  return state.events
+    .filter((e) => e.status !== 'cerrado')
+    .reduce((s, e) => s + (size ? eventQty(e, productId, size) : Object.values(e.items?.[productId] || {}).reduce((a, n) => a + (Number(n) || 0), 0)), 0);
 }
 
 // ───────────────────────── Producción ─────────────────────────

@@ -91,6 +91,7 @@ export function render(page) {
   const byChannel = ranked(groupSum(lines, (l) => l.sale.channel, val));
   const byDrop = ranked(groupSum(lines, (l) => dropById(l.product?.drop_id)?.name || 'Sin drop', val));
   const byPay = ranked(groupSum(lines, (l) => l.sale.payment_method, val));
+  const byEvent = ranked(groupSum(lines.filter((l) => l.sale.event_id), (l) => state.events.find((e) => e.id === l.sale.event_id)?.name || 'Evento eliminado', val));
   const wd = groupSum(lines, (l) => (parseYmd(l.sale.date).getDay() + 6) % 7, val);
   const byWeekday = WEEKDAYS.map((label, i) => ({ label, value: wd.get(i) || 0 }));
   const byCustomer = ranked(
@@ -157,6 +158,8 @@ export function render(page) {
     <div class="card">${barList(byChannel, { fmt })}</div>
     <div class="section"><h2>Por drop / colección</h2></div>
     <div class="card">${barList(byDrop, { fmt })}</div>
+    ${byEvent.length ? `<div class="section"><h2>Por evento</h2><a href="#eventos">Eventos</a></div>
+    <div class="card">${barList(byEvent, { fmt })}</div>` : ''}
     <div class="section"><h2>Por método de pago</h2></div>
     <div class="card">${barList(byPay, { fmt })}</div>
     <div class="section"><h2>Mejores clientes</h2></div>

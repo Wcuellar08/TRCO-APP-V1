@@ -16,6 +16,7 @@ function items() {
     can('reportes') && { href: 'reportes', icon: icons.chart, title: 'Reportes', sub: 'Qué se vende, cuándo y ganancias' },
     { href: 'ventas', icon: icons.receipt, title: 'Pedidos pendientes', sub: pending ? `${int(pending)} por atender` : 'Nada pendiente', go: () => setFilter('pendientes') },
     can('clientes') && { href: 'clientes', icon: icons.users, title: 'Clientes', sub: `${int(state.customers.length)} registrados` },
+    { href: 'eventos', icon: icons.event, title: 'Eventos', sub: (() => { const n = state.events.filter((e) => e.status !== 'cerrado').length; return n ? `${int(n)} abierto${n === 1 ? '' : 's'}` : 'Bazares y pop-ups'; })() },
     { href: 'produccion', icon: icons.factory, title: 'Producción', sub: inProd ? `${int(inProd)} ${inProd === 1 ? "lote" : "lotes"} en camino` : 'Lotes con proveedor' },
     { href: 'drops', icon: icons.fire, title: 'Drops', sub: `${int(state.drops.length)} colecciones` },
     can('gastos') && { href: 'gastos', icon: icons.wallet, title: 'Gastos', sub: 'Publicidad, envíos, empaque…' },

@@ -138,7 +138,33 @@ export function buildDemoData() {
       { id: id('e'), date: addDays(base, -12), category: 'Envíos', description: 'Guías de envío', amount: 150 + Math.round(r() * 150), created_at: now }
     );
   }
-  expenses.push({ id: id('e'), date: addDays(t, -24), category: 'Eventos', description: 'Stand pop-up Drop 03', amount: 450, created_at: now });
+  // Eventos de ejemplo: dos bazares cerrados (con sus ventas) y uno próximo.
+  const events = [];
+  const mkClosed = (name, location, from, days, stand, extra) => {
+    const evId = id('ev');
+    const to = addDays(from, days - 1);
+    const packed = {};
+    const returned = {};
+    const evSales = sales.filter((sl) => sl.date >= from && sl.date <= to && sl.channel === 'Evento / Pop-up' && sl.status !== 'cancelado');
+    for (const sl of evSales) {
+      sl.event_id = evId;
+      for (const it of sale_items.filter((x) => x.sale_id === sl.id)) {
+        it.from_event = true;
+        (packed[it.product_id] ??= {})[it.size] = (packed[it.product_id][it.size] || 0) + it.qty;
+      }
+    }
+    for (const [pid, sizes] of Object.entries(packed))
+      for (const sz of Object.keys(sizes)) {
+        packed[pid][sz] += extra;
+        (returned[pid] ??= {})[sz] = extra;
+      }
+    events.push({ id: evId, name, location, start_date: from, end_date: to, status: 'cerrado', goal: 2500, staff: [], notes: '', items: {}, packed, returned, missing: {}, closed_at: now, created_at: now });
+    expenses.push({ id: id('e'), date: from, category: 'Eventos', description: `Stand · ${name}`, amount: stand, event_id: evId, kind: 'stand', created_at: now });
+    expenses.push({ id: id('e'), date: from, category: 'Transporte', description: 'Gasolina y parqueo', amount: 120, event_id: evId, created_at: now });
+  };
+  mkClosed('Pop-up Drop 03', 'Zona 4, Ciudad de Guatemala', drops[2].release_date, 3, 450, 2);
+  mkClosed('Bazar Cayalá', 'Paseo Cayalá', drops[1].release_date, 3, 350, 3);
+  events.push({ id: id('ev'), name: 'Bazar Antigua Guate', location: 'Antigua Guatemala', start_date: addDays(t, 5), end_date: addDays(t, 6), status: 'abierto', goal: 3000, staff: [], notes: 'Montaje 8:00 am. Llevar mesa y espejo.', items: {}, packed: {}, created_at: now });
 
   const production = [
     { id: id('b'), product_id: products[7].id, supplier: 'Serigrafía Zona 1', quantities: { S: 10, M: 20, L: 20, XL: 10 }, total_cost: 4920, ordered_date: addDays(t, -30), expected_date: addDays(t, -26), received_date: addDays(t, -26), status: 'recibido', notes: '', created_at: now },
@@ -154,5 +180,6 @@ export function buildDemoData() {
     sale_items,
     production,
     expenses,
+    events,
   };
 }

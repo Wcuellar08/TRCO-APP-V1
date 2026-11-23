@@ -18,6 +18,7 @@ export const icons = {
   chevDown: svg('<path d="m6 9 6 6 6-6"/>'),
   scan: svg('<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 8h3v3H8zM13 13h3v3h-3zM13 8h3M8 13v3"/>'),
   tag: svg('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>'),
+  event: svg('<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/><path d="M3 9h18"/>'),
   chev: svg('<path d="m9 6 6 6-6 6"/>'),
   back: svg('<path d="m15 6-6 6 6 6"/>'),
 };

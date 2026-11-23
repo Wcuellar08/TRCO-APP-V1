@@ -1,4 +1,4 @@
-import { state, can, saveRow, deleteRow, adjustStock, stockTotal, sizesOf, dropById, soldLines } from '../db.js';
+import { state, can, inEvents, saveRow, deleteRow, adjustStock, stockTotal, sizesOf, dropById, soldLines } from '../db.js';
 import { $, $$, esc, Q, int, num, sheet, toast, options, emptyState, resizeImage, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 import { icons } from '../icons.js';
@@ -70,7 +70,7 @@ export function render(page) {
                 <div class="row-sub">${esc([p.type, p.color, dropById(p.drop_id)?.name].filter(Boolean).join(' · '))}</div>
                 ${sizeChips(p)}
               </div>
-              <div class="row-end"><div><b>${int(stockTotal(p))}</b></div><div class="row-sub">${Q(p.price)}</div></div>
+              <div class="row-end"><div><b>${int(stockTotal(p))}</b></div>${inEvents(p.id) ? `<div class="row-sub" style="color:var(--info)">+${int(inEvents(p.id))} en evento</div>` : ''}<div class="row-sub">${Q(p.price)}</div></div>
             </button>`
             )
             .join('')}</div>`

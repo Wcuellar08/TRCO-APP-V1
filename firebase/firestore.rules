@@ -92,6 +92,14 @@ service cloud.firestore {
       allow update: if can('produccion') || (can('inventario') && onlyChanges(['product_id']));
     }
 
+    // Eventos: solo el Dueño los crea, edita y cierra. Al vender en modo evento
+    // (o cancelar esas ventas) se mueve el stock de la maleta (campo items).
+    match /events/{id} {
+      allow read: if isMember();
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || ((can('vender') || can('borrar_ventas')) && onlyChanges(['items']));
+    }
+
     match /expenses/{id} {
       allow read, write: if can('gastos');
     }

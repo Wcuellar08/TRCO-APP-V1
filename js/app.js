@@ -2,7 +2,7 @@ import {
   CLOUD, state, currentUser, loadAll, signIn, signOut, ownerExists, createOwner, changeMyPassword, demoReplace, refresh, can, isOwner,
 } from './db.js';
 import { buildDemoData } from './demo.js';
-import { $, esc, toast } from './ui.js';
+import { $, esc, toast, Qs } from './ui.js';
 import { icons } from './icons.js';
 import { bus } from './bus.js';
 import * as dashboard from './views/dashboard.js';
@@ -17,6 +17,8 @@ import * as settings from './views/settings.js';
 import { userButtonHTML, toggleUserMenu, closeUserMenu } from './views/more.js';
 import * as usersView from './views/users.js';
 import * as catalogs from './views/catalogs.js';
+import * as eventsView from './views/events.js';
+import { activeEvent } from './eventmode.js';
 
 const routes = {
   inicio: { view: dashboard, title: 'Inicio', tab: 'inicio', wide: true },
@@ -29,6 +31,7 @@ const routes = {
   drops: { view: drops, title: 'Drops' },
   usuarios: { view: usersView, title: 'Usuarios', owner: true },
   catalogos: { view: catalogs, title: 'Catálogos', owner: true },
+  eventos: { view: eventsView, title: 'Eventos' },
   ajustes: { view: settings, title: 'Ajustes' },
 };
 
@@ -56,6 +59,7 @@ function shell() {
       ${CLOUD ? '' : '<span class="demo-pill" title="Los datos se guardan solo en este dispositivo">Demo</span>'}
       ${userButtonHTML()}
     </header>
+    <a class="ev-banner hidden" id="ev-banner" href="#eventos"></a>
     <main class="page" id="page"></main>
     <nav class="tabbar" aria-label="Navegación">
       <a class="tab" data-tab="inicio" href="#inicio">${icons.home}<span>Inicio</span></a>
@@ -88,6 +92,7 @@ function render() {
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === r.tab));
   const page = $('#page');
   page.classList.toggle('wide', Boolean(r.wide));
+  renderEventBanner();
   const key = location.hash;
   try {
     r.view.render(page, r.params);
@@ -100,6 +105,22 @@ function render() {
 }
 
 bus.rerender = render;
+
+// Barra arriba cuando este teléfono está en modo evento: nombre y avance de la meta.
+function renderEventBanner() {
+  const el = $('#ev-banner');
+  if (!el) return;
+  const ev = activeEvent();
+  el.classList.toggle('hidden', !ev);
+  document.body.classList.toggle('event-mode', Boolean(ev));
+  if (!ev) return;
+  el.href = `#eventos/${ev.id}`;
+  const st = eventsView.eventStats(ev);
+  const goal = ev.goal ? ` · ${Qs(st.revenue)} de ${Qs(ev.goal)}` : can('reportes') ? ` · ${Qs(st.revenue)}` : '';
+  el.innerHTML = `<span class="live-dot"></span><b>Modo evento</b><span class="ev-banner-name">${esc(ev.name)}${goal}</span>`;
+  if (ev.goal) el.style.setProperty('--p', `${Math.min(100, (st.revenue / ev.goal) * 100)}%`);
+  else el.style.removeProperty('--p');
+}
 
 // ───────────── Pantallas de acceso ─────────────
 function authFrame(inner) {

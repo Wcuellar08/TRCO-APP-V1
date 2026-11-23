@@ -1,11 +1,12 @@
 import {
   state, can, createSale, updateSale, deleteSale, saveRow, SALE_STATUS, itemsOf, customerById,
-  productById, dropById, profileName, saleBalance, isPending, sizesOf, stockTotal,
+  productById, dropById, profileName, eventQty, saleBalance, isPending, sizesOf, stockTotal,
 } from '../db.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, fmtDateLong, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 import { thumb } from './inventory.js';
 import { openScanner } from '../scanner.js';
+import { activeEvent, eventChannel } from '../eventmode.js';
 import { icons } from '../icons.js';
 
 let filter = 'todas';
@@ -41,7 +42,7 @@ export function saleRow(s) {
     <div class="row-main">
       <div class="row-title">${esc(c?.name || 'Venta sin cliente')}</div>
       <div class="row-sub">${esc(names || '—')}</div>
-      <div class="row-sub">${esc([s.channel, s.payment_method].filter(Boolean).join(' · '))}</div>
+      <div class="row-sub">${esc([s.event_id ? state.events.find((e) => e.id === s.event_id)?.name : '', s.channel, s.payment_method].filter(Boolean).join(' · '))}</div>
     </div>
     <div class="row-end">
       <div><b>${Q(s.total)}</b></div>
@@ -128,19 +129,22 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
   }
   const cart = [];
   let pick = { productId: '', size: '', qty: 1, price: '' };
+  const ev = activeEvent(); // modo evento en este teléfono
+  const evUnits = (p) => Object.values(ev?.items?.[p.id] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
   const products = state.products
     .filter((p) => p.active !== false)
-    .sort((a, b) => (stockTotal(b) > 0) - (stockTotal(a) > 0) || a.name.localeCompare(b.name, 'es'));
+    .sort((a, b) => (ev ? (evUnits(b) > 0) - (evUnits(a) > 0) : 0) || (stockTotal(b) > 0) - (stockTotal(a) > 0) || a.name.localeCompare(b.name, 'es'));
   const s = state.settings;
 
   sheet({
     title: 'Nueva venta',
     body: `
       <div class="form">
+        ${ev ? `<div class="ev-inline"><span class="live-dot"></span>Venta del evento <b>${esc(ev.name)}</b></div>` : ''}
         <button type="button" class="btn primary block scan-btn" id="scan">${icons.scan} Escanear etiquetas</button>
         <div class="field"><span>O elige la prenda</span>
           <select id="p-product">${options(
-            products.map((p) => ({ value: p.id, label: `${p.name}${p.color ? ' · ' + p.color : ''} (${stockTotal(p)})` })),
+            products.map((p) => ({ value: p.id, label: `${p.name}${p.color ? ' · ' + p.color : ''} (${ev ? `maleta ${evUnits(p)} · bodega ${stockTotal(p)}` : stockTotal(p)})` })),
             '',
             { empty: 'Elige un producto…' }
           )}</select>
@@ -164,7 +168,7 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
         </div>
 
         <div class="grid2">
-          <label class="field"><span>Canal</span><select id="channel">${options(s.channels, s.channels[0])}</select></label>
+          <label class="field"><span>Canal</span><select id="channel">${options(s.channels, ev ? eventChannel() : s.channels[0])}</select></label>
           <label class="field"><span>Pago</span><select id="payment">${options(s.payments, s.payments[0])}</select></label>
         </div>
         <div class="grid2">
@@ -187,13 +191,17 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
     onMount(root, close) {
       const productSel = $('#p-product', root);
 
-      const inCartOf = (pid, sz) => sumBy(cart.filter((c) => c.product_id === pid && c.size === sz), (c) => c.qty);
-      // Agrega al carrito; si ya está la misma prenda y talla al mismo precio, suma la cantidad.
-      const addItem = (p, size, qty, price) => {
-        const same = cart.find((c) => c.product_id === p.id && c.size === size && c.unit_price === price);
+      const inCartOf = (pid, sz, fromEvent) =>
+        sumBy(cart.filter((c) => c.product_id === pid && c.size === sz && (fromEvent === undefined || Boolean(c.from_event) === fromEvent)), (c) => c.qty);
+      // Disponible: en modo evento, lo que queda en la maleta; si no, lo de bodega.
+      const availEvent = (p, sz) => eventQty(ev, p.id, sz) - inCartOf(p.id, sz, true);
+      const availStock = (p, sz) => (Number(p.stock?.[sz]) || 0) - inCartOf(p.id, sz, false);
+      // Agrega al carrito; si ya está la misma prenda, talla, precio y origen, suma la cantidad.
+      const addItem = (p, size, qty, price, fromEvent = false) => {
+        const same = cart.find((c) => c.product_id === p.id && c.size === size && c.unit_price === price && Boolean(c.from_event) === fromEvent);
         if (same) same.qty += qty;
         else
-          cart.push({ product_id: p.id, product_name: p.name, type: p.type, size, qty, unit_price: price, unit_cost: Number(p.cost) || 0 });
+          cart.push({ product_id: p.id, product_name: p.name, type: p.type, size, qty, unit_price: price, unit_cost: Number(p.cost) || 0, ...(ev ? { from_event: fromEvent } : {}) });
         renderCart();
       };
 
@@ -202,14 +210,29 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
           title: 'Escanear prendas',
           counterLabel: (n) => `${n} agregada${n === 1 ? '' : 's'}`,
           onMatch: ({ product: p, size }) => {
-            const left = (Number(p.stock?.[size]) || 0) - inCartOf(p.id, size);
             const inactive = p.active === false;
-            return {
-              html: `<div class="scan-item">${thumb(p)}
+            const head = `<div class="scan-item">${thumb(p)}
                 <div class="row-main"><b>${esc(p.name)}</b><div class="muted small">${esc([p.type, dropById(p.drop_id)?.name].filter(Boolean).join(' · '))}</div>
-                  <div class="scan-meta"><span class="scan-size">${esc(size)}</span><b>${Q(p.price)}</b>
-                  ${left > 0 ? `<span class="muted small">Quedan ${left}</span>` : '<span class="badge danger">Sin stock en la app</span>'}
-                  ${inactive ? '<span class="badge muted">Inactivo</span>' : ''}</div></div></div>`,
+                  <div class="scan-meta"><span class="scan-size">${esc(size)}</span><b>${Q(p.price)}</b>`;
+            const tail = `${inactive ? '<span class="badge muted">Inactivo</span>' : ''}</div></div></div>`;
+            if (ev) {
+              const inBag = availEvent(p, size);
+              if (inBag > 0)
+                return {
+                  html: `${head}<span class="muted small">Quedan ${inBag} en la maleta</span>${tail}`,
+                  actionLabel: 'Agregar',
+                  onAction: () => addItem(p, size, 1, Number(p.price) || 0, true),
+                };
+              const inStock = availStock(p, size);
+              return {
+                html: `${head}<span class="badge warn">No está en la maleta</span><span class="muted small">Bodega ${Math.max(0, inStock)}</span>${tail}`,
+                actionLabel: 'Vender de bodega',
+                onAction: () => addItem(p, size, 1, Number(p.price) || 0, false),
+              };
+            }
+            const left = availStock(p, size);
+            return {
+              html: `${head}${left > 0 ? `<span class="muted small">Quedan ${left}</span>` : '<span class="badge danger">Sin stock en la app</span>'}${tail}`,
               actionLabel: left > 0 ? 'Agregar' : 'Agregar de todos modos',
               onAction: () => addItem(p, size, 1, Number(p.price) || 0),
             };
@@ -222,8 +245,7 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
       const renderPicker = () => {
         const p = productById(pick.productId);
         if (!p) return ($('#picker', root).innerHTML = '');
-        const sizes = sizesOf(p).filter((sz) => sz in (p.stock || {}));
-        const inCart = (sz) => sumBy(cart.filter((c) => c.product_id === p.id && c.size === sz), (c) => c.qty);
+        const sizes = sizesOf(p).filter((sz) => sz in (p.stock || {}) || (ev && eventQty(ev, p.id, sz)));
         $('#picker', root).innerHTML = `
           <div class="card">
             <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${thumb(p)}<div><b>${esc(p.name)}</b><div class="muted small">${esc([p.type, p.color].filter(Boolean).join(' · '))}</div></div></div>
@@ -232,8 +254,8 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
               sizes.length
                 ? sizes
                     .map((sz) => {
-                      const left = (Number(p.stock[sz]) || 0) - inCart(sz);
-                      return `<button type="button" class="size-btn ${pick.size === sz ? 'active' : ''}" data-sz="${esc(sz)}">${esc(sz)}<small>${left} disp.</small></button>`;
+                      const left = ev ? availEvent(p, sz) : availStock(p, sz);
+                      return `<button type="button" class="size-btn ${pick.size === sz ? 'active' : ''}" data-sz="${esc(sz)}">${esc(sz)}<small>${left} ${ev ? 'maleta' : 'disp.'}</small></button>`;
                     })
                     .join('')
                 : '<span class="muted small">Este producto no tiene tallas registradas. Agrégalas en Inventario.</span>'
@@ -253,9 +275,17 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
         $('#qty', root).oninput = (e) => (pick.qty = Math.max(1, Math.round(num(e.target.value)) || 1));
         $('#price', root).oninput = (e) => (pick.price = e.target.value);
         $('#add', root).onclick = async () => {
-          const left = (Number(p.stock[pick.size]) || 0) - inCart(pick.size);
-          if (pick.qty > left && !(await confirmAction(`Solo hay ${left} en talla ${pick.size}. ¿Agregar de todos modos?`, { ok: 'Agregar' }))) return;
-          addItem(p, pick.size, pick.qty, num(pick.price));
+          if (ev) {
+            const inBag = availEvent(p, pick.size);
+            if (pick.qty <= inBag) addItem(p, pick.size, pick.qty, num(pick.price), true);
+            else if (await confirmAction(`En la maleta ${inBag > 0 ? `solo quedan ${inBag}` : 'no hay'} ${pick.size}. ¿Vender de la bodega?`, { ok: 'Vender de bodega' }))
+              addItem(p, pick.size, pick.qty, num(pick.price), false);
+            else return;
+          } else {
+            const left = availStock(p, pick.size);
+            if (pick.qty > left && !(await confirmAction(`Solo hay ${left} en talla ${pick.size}. ¿Agregar de todos modos?`, { ok: 'Agregar' }))) return;
+            addItem(p, pick.size, pick.qty, num(pick.price));
+          }
           pick = { productId: '', size: '', qty: 1, price: '' };
           productSel.value = '';
           renderPicker();
@@ -281,7 +311,7 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
           ? `<div class="label" style="margin-bottom:4px">En esta venta</div><div class="card" style="padding:4px 14px">${cart
               .map(
                 (c, i) => `<div class="cart-item">
-                <div class="row-main"><b>${esc(c.product_name)}</b><div class="muted small">Talla ${esc(c.size)} · ${c.qty} × ${Q(c.unit_price)}</div></div>
+                <div class="row-main"><b>${esc(c.product_name)}</b><div class="muted small">Talla ${esc(c.size)} · ${c.qty} × ${Q(c.unit_price)}${ev && !c.from_event ? ' · de bodega' : ''}</div></div>
                 <div class="stepper sm"><button type="button" data-cq="${i}" data-d="-1" aria-label="Menos">−</button><span>${c.qty}</span><button type="button" data-cq="${i}" data-d="1" aria-label="Más">+</button></div>
                 <b class="num">${Q(c.qty * c.unit_price)}</b>
                 <button type="button" class="btn-text" data-rm="${i}" aria-label="Quitar" style="color:var(--danger);font-size:22px;padding:0 4px">×</button>
@@ -342,6 +372,7 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
               date: $('#date', root).value || today(),
               customer_id,
               channel: $('#channel', root).value,
+              ...(ev ? { event_id: ev.id } : {}),
               payment_method: $('#payment', root).value,
               status: $('#status', root).value,
               subtotal: sub,
