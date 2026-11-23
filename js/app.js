@@ -18,7 +18,7 @@ import * as more from './views/more.js';
 import * as usersView from './views/users.js';
 
 const routes = {
-  inicio: { view: dashboard, title: 'Inicio', tab: 'inicio' },
+  inicio: { view: dashboard, title: 'Inicio', tab: 'inicio', wide: true },
   inventario: { view: inventory, title: 'Inventario', tab: 'inventario' },
   ventas: { view: sales, title: 'Ventas', tab: 'ventas' },
   mas: { view: more, title: 'Más', tab: 'mas' },
@@ -74,6 +74,7 @@ function render() {
   back.classList.toggle('hidden', !r.back);
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === r.tab));
   const page = $('#page');
+  page.classList.toggle('wide', Boolean(r.wide));
   const key = location.hash;
   try {
     r.view.render(page, r.params);

@@ -349,3 +349,83 @@ main.page {
 .perm span { display: grid; gap: 1px; }
 .perm small { color: var(--text-2); font-size: 12.5px; }
 fieldset.readonly { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* ════════ Inicio (panel) ════════ */
+/* Paleta de las donas: validada para daltonismo sobre el fondo oscuro.
+   Cuando cambiemos los colores de TRCO, se cambian solo aquí. */
+:root {
+  --chart-1: #82a312;  /* verde TRCO (tono para gráficas) */
+  --chart-2: #d55181;  /* magenta */
+  --chart-3: #3987e5;  /* azul */
+  --chart-4: #d95926;  /* naranja */
+  --chart-5: #9085e9;  /* violeta */
+  --chart-other: #6b6b6b; /* "Otros" */
+}
+
+.period { display: grid; gap: 10px; margin-bottom: 6px; }
+.period-range { font-size: 13px; color: var(--text-2); margin: 2px 0 0; }
+
+.attn { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.attn-item {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
+  text-align: left; padding: 12px; border-radius: var(--radius); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text);
+  border-left: 3px solid var(--sev, var(--line));
+}
+.attn-item:active { background: var(--surface-2); }
+.attn-item .n { grid-row: span 2; font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; color: var(--sev); min-width: 34px; text-align: center; }
+.attn-item b { font-size: 14px; line-height: 1.2; }
+.attn-item small { font-size: 12px; color: var(--text-2); line-height: 1.25; }
+.attn-item.warn { --sev: var(--warn); }
+.attn-item.danger { --sev: var(--danger); }
+.attn-item.info { --sev: var(--info); }
+.attn-ok { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
+.attn-ok b { color: var(--ok); font-size: 20px; }
+
+.delta { font-size: 12.5px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.delta.up { color: var(--ok); }
+.delta.down { color: var(--danger); }
+.delta.flat { color: var(--text-2); }
+.kpis4 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kpis4 .kpi .v { font-size: 22px; }
+
+.donuts { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.donut-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; min-width: 0; }
+.donut-card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-2); }
+.donut-body { display: grid; grid-template-columns: 140px 1fr; gap: 14px; align-items: center; }
+.donut { position: relative; width: 140px; height: 140px; }
+.donut svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); }
+.donut circle.seg { fill: none; stroke-width: 20; cursor: pointer; transition: stroke-width 0.15s, opacity 0.15s; }
+.donut.has-active circle.seg { opacity: 0.35; }
+.donut.has-active circle.seg.active { opacity: 1; stroke-width: 24; }
+.donut-center {
+  position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
+  pointer-events: none; padding: 30px;
+}
+.donut-center .dv { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.donut-center .dl { font-size: 11px; color: var(--text-2); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; min-width: 0; }
+.legend li { min-width: 0; }
+.legend button {
+  width: 100%; display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center;
+  background: none; border: 0; padding: 5px 4px; border-radius: 8px; cursor: pointer; color: var(--text); text-align: left; font-size: 13.5px;
+}
+.legend button.active { background: var(--surface-2); }
+.legend .sw { width: 10px; height: 10px; border-radius: 3px; }
+.legend .ln { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend .lp { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 12.5px; }
+.donut-detail { font-size: 12.5px; color: var(--text-2); margin: 10px 0 0; min-height: 18px; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 360px) {
+  .donut-body { grid-template-columns: 1fr; justify-items: center; }
+  .legend { width: 100%; }
+}
+@media (min-width: 700px) {
+  .attn { grid-template-columns: repeat(3, 1fr); }
+  .kpis4 { grid-template-columns: repeat(4, 1fr); }
+  .donuts { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 1100px) {
+  .donuts { grid-template-columns: repeat(3, 1fr); }
+}
+main.page.wide { max-width: 1120px; }
