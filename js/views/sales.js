@@ -205,7 +205,7 @@ export function openNewSale({ customerId } = {}) {
         $('#price', root).oninput = (e) => (pick.price = e.target.value);
         $('#add', root).onclick = async () => {
           const left = (Number(p.stock[pick.size]) || 0) - inCart(pick.size);
-          if (pick.qty > left && !(await confirmAction(`Solo hay ${left} en talla ${pick.size}. ¿Agregar de todos modos?`))) return;
+          if (pick.qty > left && !(await confirmAction(`Solo hay ${left} en talla ${pick.size}. ¿Agregar de todos modos?`, { ok: 'Agregar' }))) return;
           cart.push({
             product_id: p.id,
             product_name: p.name,
@@ -390,7 +390,7 @@ export function openSale(id) {
         };
       $('#save', root).onclick = async () => {
         const status = $('#status', root).value;
-        if (status === 'cancelado' && s.status !== 'cancelado' && !(await confirmAction('¿Cancelar esta venta? Las prendas regresan al inventario.'))) return;
+        if (status === 'cancelado' && s.status !== 'cancelado' && !(await confirmAction('¿Cancelar esta venta? Las prendas regresan al inventario.', { ok: 'Cancelar venta', danger: true }))) return;
         try {
           await updateSale(id, { status, tracking: $('#tracking', root).value.trim(), notes: $('#notes', root).value.trim() });
           done('Venta actualizada');
@@ -399,7 +399,7 @@ export function openSale(id) {
         }
       };
       $('#del', root).onclick = async () => {
-        if (!(await confirmAction('¿Eliminar esta venta para siempre? Las prendas regresan al inventario.'))) return;
+        if (!(await confirmAction('¿Eliminar esta venta para siempre? Las prendas regresan al inventario.', { ok: 'Eliminar', danger: true }))) return;
         try {
           await deleteSale(id);
           done('Venta eliminada');

@@ -41,7 +41,7 @@ export function render(page) {
   page.innerHTML = `
     ${!CLOUD && !state.products.length ? `<div class="alert info" style="margin-bottom:14px">
       Estás en <b>modo demo</b>: los datos se guardan solo en este dispositivo.
-      ¿Quieres ver la app con datos de ejemplo? <a href="#/ajustes">Cárgalos en Ajustes</a>.</div>` : ''}
+      ¿Quieres ver la app con datos de ejemplo? <a href="#ajustes">Cárgalos en Ajustes</a>.</div>` : ''}
     <p class="muted" style="margin:0 0 12px">${hello} 👋</p>
     <div class="kpis">
       <div class="kpi hero accent">
@@ -60,14 +60,14 @@ export function render(page) {
 
     <div class="quick">
       <button class="btn primary" id="q-sale">+ Venta</button>
-      <a class="btn" href="#/reportes">Ver reportes</a>
+      <a class="btn" href="#reportes">Ver reportes</a>
     </div>
 
     ${pending.length ? `
-    <div class="section"><h2>Pendientes (${pending.length})</h2><a href="#/ventas" id="see-pending">Ver todos</a></div>
+    <div class="section"><h2>Pendientes (${pending.length})</h2><a href="#ventas" id="see-pending">Ver todos</a></div>
     <div class="list">${pending.slice(0, 5).map(saleRow).join('')}</div>` : ''}
 
-    <div class="section"><h2>Stock bajo${low.length ? ` (${low.length})` : ''}</h2><a href="#/inventario">Inventario</a></div>
+    <div class="section"><h2>Stock bajo${low.length ? ` (${low.length})` : ''}</h2><a href="#inventario">Inventario</a></div>
     ${
       low.length
         ? `<div class="list">${low
@@ -83,13 +83,13 @@ export function render(page) {
     }
 
     ${incoming.length ? `
-    <div class="section"><h2>Producción en camino</h2><a href="#/produccion">Ver</a></div>
+    <div class="section"><h2>Producción en camino</h2><a href="#produccion">Ver</a></div>
     <div class="list">${incoming
       .slice(0, 4)
       .map((b) => {
         const p = productById(b.product_id);
         const late = b.expected_date && b.expected_date < t;
-        return `<a class="row" href="#/produccion"><div class="row-main"><div class="row-title">${esc(p?.name || 'Producto')}</div>
+        return `<a class="row" href="#produccion"><div class="row-main"><div class="row-title">${esc(p?.name || 'Producto')}</div>
           <div class="row-sub">${int(batchQty(b))} prendas · ${esc(b.supplier || 'Proveedor')}</div></div>
           <div class="row-end">${b.expected_date ? `<span class="badge ${late ? 'danger' : 'info'}">${late ? 'Atrasado · ' : 'Llega '}${fmtDate(b.expected_date)}</span>` : ''}</div></a>`;
       })
@@ -98,7 +98,7 @@ export function render(page) {
     <div class="section"><h2>Lo más vendido del mes</h2></div>
     <div class="card">${barList(top, { max: 5, fmt: (v) => `${int(v)} pzs` })}</div>
 
-    <div class="section"><h2>Últimas ventas</h2><a href="#/ventas">Ver todas</a></div>
+    <div class="section"><h2>Últimas ventas</h2><a href="#ventas">Ver todas</a></div>
     ${state.sales.length ? `<div class="list">${state.sales.slice(0, 5).map(saleRow).join('')}</div>` : '<div class="card muted small">Aún no hay ventas. Toca el botón + para registrar la primera.</div>'}
   `;
 

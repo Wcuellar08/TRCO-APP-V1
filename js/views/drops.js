@@ -71,7 +71,7 @@ function openDrop(id) {
       const del = $('#del', root);
       if (del)
         del.onclick = async () => {
-          if (!(await confirmAction(`¿Eliminar "${d.name}"? Los productos se conservan, solo quedan sin drop.`))) return;
+          if (!(await confirmAction(`¿Eliminar "${d.name}"? Los productos se conservan, solo quedan sin drop.`, { ok: 'Eliminar', danger: true }))) return;
           await deleteRow('drops', id);
           toast('Drop eliminado');
           close();

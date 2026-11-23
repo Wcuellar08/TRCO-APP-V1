@@ -193,7 +193,7 @@ export function openProduct(id) {
       const del = $('#del', root);
       if (del)
         del.onclick = async () => {
-          if (!(await confirmAction(`¿Eliminar "${p.name}"? Las ventas pasadas se conservan. Si solo ya no lo vendes, mejor desmarca "Producto activo".`))) return;
+          if (!(await confirmAction(`¿Eliminar "${p.name}"? Las ventas pasadas se conservan. Si solo ya no lo vendes, mejor desmarca "Producto activo".`, { ok: 'Eliminar', danger: true }))) return;
           try {
             await deleteRow('products', id);
             toast('Producto eliminado');

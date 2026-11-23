@@ -70,7 +70,8 @@ const local = {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(this.data));
     } catch (e) {
-      throw new Error('No hay espacio en el dispositivo para guardar (¿demasiadas fotos?).');
+      // Si el navegador bloquea el almacenamiento, los datos quedan solo en memoria.
+      if (e?.name === 'QuotaExceededError') throw new Error('No hay espacio en el dispositivo para guardar (¿demasiadas fotos?).');
     }
   },
   async session() {
@@ -116,7 +117,9 @@ const local = {
     this.save();
   },
   reset() {
-    localStorage.removeItem(LS_KEY);
+    try {
+      localStorage.removeItem(LS_KEY);
+    } catch {}
     this.data = null;
   },
 };

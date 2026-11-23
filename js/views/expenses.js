@@ -11,7 +11,7 @@ export function render(page) {
   }
   const thisMonth = sumBy(state.expenses.filter((e) => e.date >= startOfMonth()), (e) => e.amount);
   page.innerHTML = `
-    <p class="muted small" style="margin-top:0">Gastos de operación: publicidad, envíos, empaque, eventos… Lo que pagas por producir prendas va en <a href="#/produccion">Producción</a> (eso es inventario).</p>
+    <p class="muted small" style="margin-top:0">Gastos de operación: publicidad, envíos, empaque, eventos… Lo que pagas por producir prendas va en <a href="#produccion">Producción</a> (eso es inventario).</p>
     <div class="kpis"><div class="kpi hero"><div class="k">Gastos de este mes</div><div class="v">${Q(thisMonth)}</div></div></div>
     <div class="btn-row"><button class="btn primary" id="new">+ Nuevo gasto</button></div>
     ${
@@ -70,7 +70,7 @@ function openExpense(id) {
       const del = $('#del', root);
       if (del)
         del.onclick = async () => {
-          if (!(await confirmAction('¿Eliminar este gasto?'))) return;
+          if (!(await confirmAction('¿Eliminar este gasto?', { ok: 'Eliminar', danger: true }))) return;
           await deleteRow('expenses', id);
           toast('Gasto eliminado');
           close();

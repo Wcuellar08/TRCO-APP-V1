@@ -126,10 +126,10 @@ export function openBatch(id) {
       if (rec)
         rec.onclick = async () => {
           const p = productById(b.product_id);
-          if (!(await confirmAction(`¿Recibiste ${batchQty(b)} prendas de "${p?.name}"? Se sumarán al inventario.`))) return;
+          if (!(await confirmAction(`¿Recibiste ${batchQty(b)} prendas de "${p?.name}"? Se sumarán al inventario.`, { ok: 'Sí, recibido' }))) return;
           let updateCost = false;
           if (owner && Number(b.total_cost) > 0 && p && Number(p.cost) !== unitCostOf(b)) {
-            updateCost = await confirmAction(`¿Actualizar el costo por prenda de "${p.name}" a ${Q(unitCostOf(b))}? (Ahora es ${Q(p.cost)})`);
+            updateCost = await confirmAction(`¿Actualizar el costo por prenda de "${p.name}" a ${Q(unitCostOf(b))}? (Ahora es ${Q(p.cost)})`, { ok: 'Actualizar' });
           }
           try {
             await receiveProduction(id, { updateCost });

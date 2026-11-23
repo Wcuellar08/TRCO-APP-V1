@@ -6,7 +6,7 @@ export function render(page) {
   const owner = isOwner();
   const inProd = state.production.filter((b) => b.status !== 'recibido').length;
   const tile = (href, icon, title, sub, wide = false) =>
-    `<a class="menu-tile ${wide ? 'wide' : ''}" href="#/${href}">${icon}<b>${esc(title)}</b><span>${esc(sub)}</span></a>`;
+    `<a class="menu-tile ${wide ? 'wide' : ''}" href="#${href}">${icon}<b>${esc(title)}</b><span>${esc(sub)}</span></a>`;
   page.innerHTML = `
     <div class="menu-grid">
       ${tile('reportes', icons.chart, 'Reportes', 'Qué se vende más, cuándo, tallas, canales y ganancias', true)}

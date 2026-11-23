@@ -122,7 +122,7 @@ export function openCustomer(id) {
       const del = $('#del', root);
       if (del)
         del.onclick = async () => {
-          if (!(await confirmAction(`¿Eliminar a ${c.name}? Sus ventas se conservan sin cliente.`))) return;
+          if (!(await confirmAction(`¿Eliminar a ${c.name}? Sus ventas se conservan sin cliente.`, { ok: 'Eliminar', danger: true }))) return;
           try {
             await deleteRow('customers', id);
             toast('Cliente eliminado');

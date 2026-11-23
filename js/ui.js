@@ -109,7 +109,29 @@ export function sheet({ title, body, onMount, wide = false }) {
   return close;
 }
 
-export const confirmAction = (msg) => Promise.resolve(window.confirm(msg));
+// Diálogo de confirmación propio (los confirm() nativos no siempre funcionan).
+export function confirmAction(msg, { ok = 'Confirmar', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'dialog-wrap';
+    wrap.innerHTML = `<div class="dialog" role="alertdialog" aria-modal="true">
+        <p>${esc(msg)}</p>
+        <div class="btn-row">
+          <button class="btn" type="button" data-r="0">Cancelar</button>
+          <button class="btn ${danger ? 'danger' : 'primary'}" type="button" data-r="1">${esc(ok)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => wrap.classList.add('open'));
+    const done = (v) => {
+      wrap.remove();
+      resolve(v);
+    };
+    wrap.querySelectorAll('[data-r]').forEach((b) => (b.onclick = () => done(b.dataset.r === '1')));
+    wrap.addEventListener('click', (e) => e.target === wrap && done(false));
+    wrap.querySelector('[data-r="1"]').focus();
+  });
+}
 
 // ── Formularios ──
 export const options = (list, selected, { empty } = {}) =>

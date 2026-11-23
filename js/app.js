@@ -1,4 +1,5 @@
-import { CLOUD, state, currentUser, loadAll, signIn, signUp, signOut } from './db.js';
+import { CLOUD, state, currentUser, loadAll, signIn, signUp, signOut, demoReplace, refresh } from './db.js';
+import { buildDemoData } from './demo.js';
 import { $, esc, toast } from './ui.js';
 import { icons } from './icons.js';
 import { bus } from './bus.js';
@@ -37,18 +38,18 @@ function currentRoute() {
 function shell() {
   app.innerHTML = `
     <header class="topbar">
-      <a class="back hidden btn-text" id="back" href="#/mas">‹ Más</a>
+      <a class="back hidden btn-text" id="back" href="#mas">‹ Más</a>
       <h1 id="title"></h1>
       ${CLOUD ? '' : '<span class="demo-pill" title="Los datos se guardan solo en este dispositivo">Demo</span>'}
       <span class="brand-mark">TRCO</span>
     </header>
     <main class="page" id="page"></main>
     <nav class="tabbar" aria-label="Navegación">
-      <a class="tab" data-tab="inicio" href="#/inicio">${icons.home}<span>Inicio</span></a>
-      <a class="tab" data-tab="inventario" href="#/inventario">${icons.shirt}<span>Inventario</span></a>
+      <a class="tab" data-tab="inicio" href="#inicio">${icons.home}<span>Inicio</span></a>
+      <a class="tab" data-tab="inventario" href="#inventario">${icons.shirt}<span>Inventario</span></a>
       <a class="tab tab-sell" id="tab-sell" href="#" aria-label="Nueva venta"><span class="plus">${icons.plus}</span></a>
-      <a class="tab" data-tab="ventas" href="#/ventas">${icons.receipt}<span>Ventas</span></a>
-      <a class="tab" data-tab="mas" href="#/mas">${icons.grid}<span>Más</span></a>
+      <a class="tab" data-tab="ventas" href="#ventas">${icons.receipt}<span>Ventas</span></a>
+      <a class="tab" data-tab="mas" href="#mas">${icons.grid}<span>Más</span></a>
     </nav>`;
   $('#tab-sell').addEventListener('click', (e) => {
     e.preventDefault();
@@ -60,7 +61,7 @@ let lastRoute = '';
 function render() {
   const r = currentRoute();
   if (r.owner && state.profile?.role !== 'owner') {
-    location.hash = '#/inicio';
+    location.hash = '#inicio';
     return;
   }
   document.title = `${r.title} · TRCO`;
@@ -143,12 +144,24 @@ function pendingScreen() {
   $('#logout').onclick = signOut;
 }
 
+// En la vista previa se cargan datos de ejemplo la primera vez.
+async function maybeAutoSeed() {
+  if (CLOUD || !window.TRCO_AUTOSEED || state.products.length || state.sales.length) return;
+  try {
+    if (localStorage.getItem('trco-autoseeded')) return;
+    localStorage.setItem('trco-autoseeded', '1');
+  } catch {}
+  demoReplace(buildDemoData());
+  await refresh();
+}
+
 async function boot() {
   try {
     const user = await currentUser();
     if (!user) return authScreen();
     const ok = await loadAll(user);
     if (!ok) return pendingScreen();
+    await maybeAutoSeed();
     shell();
     render();
   } catch (e) {

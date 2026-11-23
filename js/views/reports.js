@@ -163,7 +163,7 @@ export function render(page) {
     ${owner ? `
     <div class="section"><h2>Ganancia por producto</h2></div>
     <div class="card">${barList(marginByProduct, { fmt: Qs, max: 10 })}</div>
-    <div class="section"><h2>Gastos por categoría</h2><a href="#/gastos">Gastos</a></div>
+    <div class="section"><h2>Gastos por categoría</h2><a href="#gastos">Gastos</a></div>
     <div class="card">${barList(byExpense, { fmt: Qs })}</div>` : ''}
 
     <div class="btn-row"><button class="btn" id="csv">Descargar ventas (Excel / CSV)</button></div>

@@ -170,7 +170,7 @@ export function render(page) {
   const wipe = $('#wipe', page);
   if (wipe)
     wipe.onclick = async () => {
-      if (!(await confirmAction('¿Borrar TODOS los datos del demo? No se puede deshacer.'))) return;
+      if (!(await confirmAction('¿Borrar TODOS los datos del demo? No se puede deshacer.', { ok: 'Borrar', danger: true }))) return;
       demoReset();
       await refresh();
       toast('Datos borrados');
