@@ -43,12 +43,15 @@ python3 -m http.server 8000
 
 > Opcional: en Supabase → *Authentication → Providers → Email* puedes desactivar "Confirm email" para no tener que confirmar el correo al registrarse.
 
-## 3. Publicarla en internet
+## 3. Publicarla en internet (GitHub Pages)
 
-Es un sitio estático (no necesita servidor). Opciones gratis:
+La app se publica desde la rama `main` con GitHub Pages:
 
-- **Netlify / Cloudflare Pages / Vercel:** conecta este repositorio de GitHub. No hace falta configurar nada de compilación (*build command* vacío, *publish directory* `/`).
-- **GitHub Pages:** *Settings → Pages → Deploy from branch*. En repositorios privados requiere un plan de pago de GitHub.
+1. El repositorio debe ser **público** (Settings → General → Danger Zone → Change visibility). Tus datos de ventas NO están en el código; viven en Supabase o en el dispositivo.
+2. **Settings → Pages → Build and deployment**: *Source* = **Deploy from a branch**, *Branch* = **main** y carpeta **/ (root)** → **Save**.
+3. En 1-2 minutos queda en **https://wcuellar08.github.io/TRCO-APP-V1/**.
+
+Cada cambio que se sube a `main` se publica solo en 1-2 minutos. En el iPhone, cierra y vuelve a abrir la app (a veces dos veces) para que tome la versión nueva.
 
 ## 4. Instalar en iPhone / iPad
 
