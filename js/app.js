@@ -45,14 +45,12 @@ function fifthTab() {
   return { key: 'produccion', icon: icons.factory, label: 'Producción' };
 }
 
-const TAB_ROUTES = () => ['inicio', 'inventario', 'ventas', fifthTab().key];
-
 function shell() {
   const t5 = fifthTab();
   app.innerHTML = `
     <header class="topbar">
-      <a class="back hidden btn-text" id="back" href="#inicio">‹ Atrás</a>
-      <h1 id="title"></h1>
+      <a class="brand" id="brand" href="#inicio" aria-label="TRCO, ir a Inicio"><h1>TRCO<span>.</span></h1></a>
+      <span class="topbar-spacer"></span>
       ${CLOUD ? '' : '<span class="demo-pill" title="Los datos se guardan solo en este dispositivo">Demo</span>'}
       ${userButtonHTML()}
     </header>
@@ -65,12 +63,8 @@ function shell() {
       <a class="tab" data-tab="${t5.key}" href="#${t5.key}">${t5.icon}<span>${t5.label}</span></a>
     </nav>`;
   $('#user-btn').addEventListener('click', toggleUserMenu);
-  $('#back').addEventListener('click', (e) => {
-    // Regresa a la pantalla anterior si venías de la app; si no, a Inicio.
-    if (inAppNavs > 0) {
-      e.preventDefault();
-      history.back();
-    }
+  $('#brand').addEventListener('click', () => {
+    if (location.hash === '#inicio' || location.hash === '') window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   $('#tab-sell')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -87,9 +81,6 @@ function render() {
   }
   closeUserMenu();
   document.title = `${r.title} · TRCO`;
-  $('#title').textContent = r.title;
-  const back = $('#back');
-  back.classList.toggle('hidden', TAB_ROUTES().includes(r.name));
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === r.tab));
   const page = $('#page');
   page.classList.toggle('wide', Boolean(r.wide));
@@ -242,10 +233,8 @@ async function syncIfStale(force = false) {
   }
 }
 
-let inAppNavs = 0;
 window.addEventListener('hashchange', () => {
   if (!$('#page')) return;
-  inAppNavs++;
   render();
   syncIfStale();
 });
