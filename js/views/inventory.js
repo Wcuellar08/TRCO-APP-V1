@@ -5,6 +5,7 @@ import { icons } from '../icons.js';
 import { openScanner } from '../scanner.js';
 import { openLabels } from '../labels.js';
 import { nextProductCode } from '../codes.js';
+import { openPreorder } from './preorders.js';
 
 let query = '';
 let typeFilter = '';
@@ -143,7 +144,8 @@ export function openProduct(id) {
         <label class="field"><span>Notas</span><textarea name="notes" placeholder="Tela, proveedor, detalles del estampado…">${esc(p.notes)}</textarea></label>
         <label class="check"><input type="checkbox" name="active" ${p.active !== false ? 'checked' : ''}> Producto activo (a la venta)</label>
         ${id ? `<p class="muted small">Vendidas en total: <b>${int(sold)}</b></p>` : ''}
-        ${id && editable ? `<button class="btn block" type="button" id="labels">${icons.tag} Imprimir etiquetas QR</button>` : ''}
+        ${id && editable ? `<button class="btn block" type="button" id="labels">${icons.tag} Imprimir etiquetas QR</button>
+          <button class="btn block" type="button" id="preorder">⏳ ${p.preorder ? 'Editar preventa' : 'Poner en preventa'}</button>` : ''}
         ${editable ? `<button class="btn primary block" type="submit">Guardar</button>
         ${id ? `<button class="btn danger block" type="button" id="del">Eliminar producto</button>` : ''}` : '<p class="muted small">Solo lectura. Para editar productos necesitas el permiso "Editar inventario".</p>'}
       </fieldset></form>`,
@@ -209,6 +211,8 @@ export function openProduct(id) {
           toast(err.message, 'error');
         }
       };
+      const po = $('#preorder', root);
+      if (po) po.onclick = () => (close(), setTimeout(() => openPreorder(state.products.find((x) => x.id === id) || p), 240));
       const lb = $('#labels', root);
       if (lb) lb.onclick = () => openLabels(state.products.find((x) => x.id === id) || p);
       const del = $('#del', root);

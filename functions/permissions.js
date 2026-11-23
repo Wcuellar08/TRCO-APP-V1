@@ -2,6 +2,7 @@
 module.exports.PERMISSIONS = [
   'vender',
   'editar_ventas',
+  'descuentos',
   'borrar_ventas',
   'inventario',
   'produccion',

@@ -11,6 +11,8 @@ App web instalable (PWA) para iPhone y iPad que controla el negocio de **TRCO**:
 | **Etiquetas QR** | Cada producto tiene un código (`TRCO-0012`) y cada talla una etiqueta con QR (`TRCO-0012-M`), nombre, tipo, drop, precio y talla. Se imprimen en impresoras de etiquetas (Niimbot, Phomemo…) compartiendo las imágenes, o por AirPrint. Tamaño configurable en Ajustes (40 × 30 mm por defecto) |
 | **Escáner** | Al vender: modo ráfaga con la cámara, cada prenda escaneada muestra "Agregar". En Inventario: escanear para ver el stock de todas las tallas |
 | **Eventos** | Bazares y pop-ups: fechas, lugar, stand (se registra como gasto), equipo, meta y notas. **Maleta**: prendas que se separan de la bodega (lista, escaneo o sugerencias según eventos anteriores). **Modo evento** por teléfono: las ventas descuentan de la maleta y se ligan al evento. **Cierre con conteo**: lo que regresa vuelve a bodega y se registran faltantes. Comparación entre eventos y sección "Por evento" en Reportes |
+| **Promociones** | % de descuento, monto fijo, N prendas por Q, precio especial por producto o drop y códigos. Reglas: vigencia, canales, evento, límite de usos (o 1 por cliente) y compra mínima. Al vender la app sugiere la que aplica; una por venta. Códigos de influencer con comisión, saldo y registro de pagos. El descuento a mano requiere el permiso "Descuentos a mano" |
+| **Preventas** | Producto en preventa con precio especial, fecha de cierre y cupo opcional por talla. Pedidos cobrados completos, "Mandar a producir" con pedidos + extra, apartado automático por orden de llegada al recibir la producción y aviso por WhatsApp |
 | **＋ Vender** | Registro rápido: producto → talla → cantidad. Descuenta el inventario solo. Admite descuentos, envío, anticipos/apartados y clientes nuevos |
 | **Ventas / Pedidos** | Historial por día y filtros: pendientes, por enviar, apartados, por cobrar. Registrar pagos, número de guía, cancelar (regresa el stock) |
 | **Reportes** | Por periodo: ventas en el tiempo, productos más vendidos, tipo de prenda, talla, color, día de la semana, canal, drop, método de pago, mejores clientes, ganancia por producto y gastos. Exporta a Excel (CSV) |
@@ -110,6 +112,7 @@ js/codes.js           Códigos de producto y lectura de QR
 js/labels.js          Generación e impresión de etiquetas
 js/scanner.js         Escáner con la cámara
 js/eventmode.js       Modo evento del teléfono
+js/promos.js          Motor de promociones
 js/vendor/            Librerías QR (qrcode-generator MIT, jsQR Apache-2.0)
 js/views/*.js         Cada pantalla (users.js = gestión de usuarios)
 js/permissions.js     Lista de permisos de colaborador

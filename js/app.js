@@ -18,6 +18,8 @@ import { userButtonHTML, toggleUserMenu, closeUserMenu, sideNavHTML, renderSideN
 import * as usersView from './views/users.js';
 import * as catalogs from './views/catalogs.js';
 import * as eventsView from './views/events.js';
+import * as promosView from './views/promos.js';
+import * as preordersView from './views/preorders.js';
 import { activeEvent } from './eventmode.js';
 
 const routes = {
@@ -32,6 +34,8 @@ const routes = {
   usuarios: { view: usersView, title: 'Usuarios', owner: true },
   catalogos: { view: catalogs, title: 'Catálogos', owner: true },
   eventos: { view: eventsView, title: 'Eventos' },
+  promos: { view: promosView, title: 'Promociones', owner: true },
+  preventas: { view: preordersView, title: 'Preventas' },
   ajustes: { view: settings, title: 'Ajustes' },
 };
 

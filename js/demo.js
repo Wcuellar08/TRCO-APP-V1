@@ -166,6 +166,44 @@ export function buildDemoData() {
   mkClosed('Bazar Cayalá', 'Paseo Cayalá', drops[1].release_date, 3, 350, 3);
   events.push({ id: id('ev'), name: 'Bazar Antigua Guate', location: 'Antigua Guatemala', start_date: addDays(t, 5), end_date: addDays(t, 6), status: 'abierto', goal: 3000, staff: [], notes: 'Montaje 8:00 am. Llevar mesa y espejo.', items: {}, packed: {}, created_at: now });
 
+  // Promociones de ejemplo
+  const promos = [
+    { id: id('pr'), name: '2 playeras por Q350', type: 'bundle', bundle_qty: 2, bundle_price: 350, product_ids: [], drop_ids: [], channels: [], active: true, start_date: addDays(t, -60), created_at: now },
+    { id: id('pr'), name: 'Liquidación Drop 01', type: 'special', value: 120, product_ids: [], drop_ids: [drops[0].id], channels: [], active: true, start_date: addDays(t, -20), end_date: addDays(t, 20), created_at: now },
+    { id: id('pr'), name: 'Código Andrea', type: 'percent', value: 10, code: 'ANDRE10', influencer: 'Andrea Fit', commission_pct: 5, product_ids: [], drop_ids: [], channels: ['Instagram', 'WhatsApp'], active: true, start_date: addDays(t, -90), created_at: now },
+    { id: id('pr'), name: 'Black Friday 15%', type: 'percent', value: 15, product_ids: [], drop_ids: [], channels: [], active: true, start_date: addDays(t, 4), end_date: addDays(t, 7), max_uses: 50, created_at: now },
+  ];
+  // Algunas ventas usaron el código de la influencer
+  const andre = promos[2];
+  sales
+    .filter((sl) => sl.channel === 'Instagram' && sl.status === 'entregado' && !sl.discount)
+    .filter((_, i) => i % 6 === 0)
+    .slice(0, 9)
+    .forEach((sl) => {
+      const disc = Math.round(sl.subtotal * 0.1 * 100) / 100;
+      Object.assign(sl, { discount: disc, total: sl.subtotal - disc + sl.shipping, paid: sl.subtotal - disc + sl.shipping, promo_id: andre.id, promo_name: andre.name, promo_code: andre.code });
+    });
+  expenses.push({ id: id('e'), date: addDays(t, -30), category: 'Publicidad', description: 'Comisión Andrea Fit (ANDRE10)', amount: 60, promo_id: andre.id, kind: 'comision', created_at: now });
+
+  // Producto en preventa con pedidos
+  const pre = {
+    id: id('p'), code: 'TRCO-0009', name: 'Boxy Invierno', type: 'Playera boxy', color: 'Gris jaspe', drop_id: null,
+    price: 240, cost: 85, stock: {}, min_stock: 2, photo: null, notes: 'Próximo drop', active: true, created_at: now,
+    preorder: { active: true, price: 199, end_date: addDays(t, 10), started_at: addDays(t, -6), quotas: { S: 10, M: 20, L: 20, XL: null } },
+  };
+  products.push(pre);
+  const preSizes = ['M', 'L', 'M', 'S', 'L', 'XL', 'M', 'L', 'M', 'S', 'L'];
+  preSizes.forEach((size, k) => {
+    const sid = id('s');
+    const date = addDays(t, -6 + Math.floor(k / 2));
+    sales.push({
+      id: sid, date, customer_id: customers[k % customers.length].id, channel: k % 3 ? 'Instagram' : 'WhatsApp', payment_method: 'Transferencia',
+      status: 'preventa', preorder: true, subtotal: 199, discount: 0, shipping: 0, total: 199, paid: 199, tracking: '', notes: '', created_by: null,
+      created_at: `${date}T${String(9 + k).padStart(2, '0')}:00:00.000Z`,
+    });
+    sale_items.push({ id: id('i'), sale_id: sid, product_id: pre.id, product_name: pre.name, type: pre.type, size, qty: 1, unit_price: 199, unit_cost: pre.cost, preorder: true, created_at: now });
+  });
+
   const production = [
     { id: id('b'), product_id: products[7].id, supplier: 'Serigrafía Zona 1', quantities: { S: 10, M: 20, L: 20, XL: 10 }, total_cost: 4920, ordered_date: addDays(t, -30), expected_date: addDays(t, -26), received_date: addDays(t, -26), status: 'recibido', notes: '', created_at: now },
     { id: id('b'), product_id: products[2].id, supplier: 'Taller Mixco', quantities: { M: 15, L: 15, XL: 5 }, total_cost: 2450, ordered_date: addDays(t, -6), expected_date: addDays(t, 5), received_date: null, status: 'en_produccion', notes: 'Reposición talla L', created_at: now },
@@ -181,5 +219,6 @@ export function buildDemoData() {
     production,
     expenses,
     events,
+    promos,
   };
 }

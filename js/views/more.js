@@ -16,10 +16,12 @@ function navItems() {
   return [
     { href: 'eventos', icon: icons.event, title: 'Eventos', badge: openEvents ? `${int(openEvents)} abierto${openEvents === 1 ? '' : 's'}` : '' },
     can('clientes') && { href: 'clientes', icon: icons.users, title: 'Clientes', badge: '' },
+    { href: 'preventas', icon: icons.clock, title: 'Preventas', badge: (() => { const n = state.sales.filter((s) => s.status === 'preventa').length; return n ? `${int(n)} pedidos` : ''; })() },
     { href: 'produccion', icon: icons.factory, title: 'Producción', badge: inProd ? `${int(inProd)} en camino` : '' },
     { href: 'drops', icon: icons.fire, title: 'Drops', badge: '' },
     can('gastos') && { href: 'gastos', icon: icons.wallet, title: 'Gastos', badge: '' },
     isOwner() && { section: 'Administración' },
+    isOwner() && { href: 'promos', icon: icons.percent, title: 'Promociones', badge: '' },
     isOwner() && { href: 'usuarios', icon: icons.key, title: 'Usuarios', badge: '' },
     isOwner() && { href: 'catalogos', icon: icons.tag, title: 'Catálogos', badge: '' },
   ].filter(Boolean);

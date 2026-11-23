@@ -20,6 +20,8 @@ export const icons = {
   tag: svg('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>'),
   event: svg('<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/><path d="M3 9h18"/>'),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  percent: svg('<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>'),
   chev: svg('<path d="m9 6 6 6-6 6"/>'),
   back: svg('<path d="m15 6-6 6 6 6"/>'),
 };

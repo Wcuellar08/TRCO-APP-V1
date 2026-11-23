@@ -18,6 +18,7 @@ export const SALE_STATUS = {
   entregado: { label: 'Entregado', cls: 'ok' },
   por_enviar: { label: 'Por enviar', cls: 'warn' },
   apartado: { label: 'Apartado', cls: 'info' },
+  preventa: { label: 'Preventa', cls: 'info' },
   cancelado: { label: 'Cancelado', cls: 'muted' },
 };
 
@@ -26,7 +27,7 @@ export const PROD_STATUS = {
   recibido: { label: 'Recibido', cls: 'ok' },
 };
 
-const TABLES = ['settings', 'profiles', 'drops', 'products', 'customers', 'sales', 'sale_items', 'production', 'expenses', 'events'];
+const TABLES = ['settings', 'profiles', 'drops', 'products', 'customers', 'sales', 'sale_items', 'production', 'expenses', 'events', 'promos'];
 
 export const state = {
   user: null,
@@ -41,6 +42,7 @@ export const state = {
   production: [],
   expenses: [],
   events: [],
+  promos: [],
 };
 
 const uuid = () =>
@@ -177,7 +179,7 @@ async function hashPassword(username, password) {
   return 'x' + (h >>> 0).toString(16);
 }
 
-const PERMISSION_KEYS = ['vender', 'editar_ventas', 'borrar_ventas', 'inventario', 'produccion', 'clientes', 'reportes', 'costos', 'gastos', 'exportar'];
+const PERMISSION_KEYS = ['vender', 'editar_ventas', 'descuentos', 'borrar_ventas', 'inventario', 'produccion', 'clientes', 'reportes', 'costos', 'gastos', 'exportar'];
 const bad = (msg) => {
   throw new Error(msg);
 };
@@ -559,7 +561,8 @@ export async function saveSettings(data) {
 }
 
 // ───────────────────────── Ventas ─────────────────────────
-const consumesStock = (status) => status !== 'cancelado';
+// Las preventas todavía no tienen prenda física: descuentan stock hasta que se apartan.
+const consumesStock = (status) => status !== 'cancelado' && status !== 'preventa';
 
 // Mueve el stock de las prendas de una venta. Si la prenda salió de la maleta de un
 // evento que sigue abierto, se mueve ahí; si no (o el evento ya cerró), en la bodega.
@@ -660,6 +663,45 @@ export async function receiveProduction(id, { updateCost } = {}) {
   await refresh(['production', 'products']);
 }
 
+// ───────────────────────── Preventas ─────────────────────────
+// product.preorder = { active, price, end_date, started_at, quotas: { S: 20, M: null } }
+export const preorderOpen = (p, date = new Date().toISOString().slice(0, 10)) =>
+  Boolean(p?.preorder?.active) && (!p.preorder.end_date || date <= p.preorder.end_date);
+
+// Pedidos de preventa de un producto (todas las ventas marcadas como preventa, no canceladas).
+export function preorderSales(productId) {
+  const ids = new Set(state.sale_items.filter((i) => i.product_id === productId && i.preorder).map((i) => i.sale_id));
+  return state.sales.filter((s) => ids.has(s.id) && s.status !== 'cancelado');
+}
+export function preorderCount(productId, size) {
+  const ok = new Set(preorderSales(productId).map((s) => s.id));
+  return state.sale_items
+    .filter((i) => ok.has(i.sale_id) && i.product_id === productId && i.preorder && (!size || i.size === size))
+    .reduce((a, i) => a + (Number(i.qty) || 0), 0);
+}
+
+// Aparta stock para las preventas pendientes, por orden de llegada. Un pedido se aparta
+// solo si alcanza para todas sus prendas; pasa a "Por enviar" y descuenta el stock.
+export async function allocatePreorders(productId) {
+  const pending = state.sales
+    .filter((s) => s.status === 'preventa')
+    .filter((s) => !productId || state.sale_items.some((i) => i.sale_id === s.id && i.product_id === productId))
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const stock = {};
+  const avail = (pid, size) => (stock[pid] ??= { ...(productById(pid)?.stock || {}) })[size] || 0;
+  const done = [];
+  const waiting = [];
+  for (const s of pending) {
+    const items = itemsOf(s.id).filter((i) => i.product_id);
+    if (items.every((i) => avail(i.product_id, i.size) >= i.qty)) {
+      items.forEach((i) => (stock[i.product_id][i.size] -= i.qty));
+      await updateSale(s.id, { status: 'por_enviar' });
+      done.push(s);
+    } else waiting.push(s);
+  }
+  return { done, waiting };
+}
+
 export const batchQty = (b) => Object.values(b.quantities || {}).reduce((s, n) => s + (Number(n) || 0), 0);
 export const unitCostOf = (b) => {
   const q = batchQty(b);
@@ -693,7 +735,7 @@ export const sizesOf = (p) => {
   return [...base, ...extra];
 };
 export const saleBalance = (s) => Math.max(0, (Number(s.total) || 0) - (Number(s.paid) || 0));
-export const isPending = (s) => s.status === 'apartado' || s.status === 'por_enviar' || (s.status !== 'cancelado' && saleBalance(s) > 0.009);
+export const isPending = (s) => s.status === 'apartado' || s.status === 'por_enviar' || s.status === 'preventa' || (s.status !== 'cancelado' && saleBalance(s) > 0.009);
 
 // Líneas de venta "planas" para reportes: ingreso con descuento prorrateado.
 export function soldLines(from, to) {

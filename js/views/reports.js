@@ -1,4 +1,4 @@
-import { state, can, soldLines, dropById, customerById } from '../db.js';
+import { state, can, isOwner, soldLines, dropById, customerById } from '../db.js';
 import {
   $, $$, esc, Q, Qs, int, pct, today, addDays, parseYmd, ymd, startOfMonth, endOfMonth, startOfWeek, MONTHS, WEEKDAYS,
   sumBy, groupSum, barList, columnChart, bindColumnTips, downloadFile, toCSV, fmtDate,
@@ -59,6 +59,7 @@ const ranked = (map, extra) =>
 
 export function render(page) {
   const owner = can('costos');
+  const isOwnerNow = isOwner();
   const seeExpenses = can('gastos');
   const [from, to] = PRESETS[preset].range();
   const { sales, lines } = soldLines(from, to);
@@ -91,6 +92,14 @@ export function render(page) {
   const byChannel = ranked(groupSum(lines, (l) => l.sale.channel, val));
   const byDrop = ranked(groupSum(lines, (l) => dropById(l.product?.drop_id)?.name || 'Sin drop', val));
   const byPay = ranked(groupSum(lines, (l) => l.sale.payment_method, val));
+  const promoMap = new Map();
+  for (const s of sales.filter((x) => x.promo_name)) {
+    const r = promoMap.get(s.promo_name) || { label: s.promo_name, value: 0, n: 0 };
+    r.value += Number(s.discount) || 0;
+    r.n += 1;
+    promoMap.set(s.promo_name, r);
+  }
+  const byPromo = [...promoMap.values()].map((r) => ({ ...r, sub: `${int(r.n)} venta${r.n === 1 ? '' : 's'}` })).sort((a, b) => b.value - a.value);
   const byEvent = ranked(groupSum(lines.filter((l) => l.sale.event_id), (l) => state.events.find((e) => e.id === l.sale.event_id)?.name || 'Evento eliminado', val));
   const wd = groupSum(lines, (l) => (parseYmd(l.sale.date).getDay() + 6) % 7, val);
   const byWeekday = WEEKDAYS.map((label, i) => ({ label, value: wd.get(i) || 0 }));
@@ -160,6 +169,8 @@ export function render(page) {
     <div class="card">${barList(byDrop, { fmt })}</div>
     ${byEvent.length ? `<div class="section"><h2>Por evento</h2><a href="#eventos">Eventos</a></div>
     <div class="card">${barList(byEvent, { fmt })}</div>` : ''}
+    ${byPromo.length ? `<div class="section"><h2>Descuento dado por promoción</h2>${isOwnerNow ? '<a href="#promos">Promociones</a>' : ''}</div>
+    <div class="card">${barList(byPromo, { fmt: Qs })}</div>` : ''}
     <div class="section"><h2>Por método de pago</h2></div>
     <div class="card">${barList(byPay, { fmt })}</div>
     <div class="section"><h2>Mejores clientes</h2></div>

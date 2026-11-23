@@ -1,12 +1,13 @@
 import {
   state, can, createSale, updateSale, deleteSale, saveRow, SALE_STATUS, itemsOf, customerById,
-  productById, dropById, profileName, eventQty, saleBalance, isPending, sizesOf, stockTotal,
+  productById, dropById, profileName, eventQty, preorderOpen, preorderCount, saleBalance, isPending, sizesOf, stockTotal,
 } from '../db.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, fmtDateLong, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 import { thumb } from './inventory.js';
 import { openScanner } from '../scanner.js';
 import { activeEvent, eventChannel } from '../eventmode.js';
+import { evaluatePromo, suggestPromos, findByCode, promoSummary } from '../promos.js';
 import { icons } from '../icons.js';
 
 let filter = 'todas';
@@ -19,6 +20,7 @@ const FILTERS = {
   pendientes: { label: 'Pendientes', fn: isPending },
   por_enviar: { label: 'Por enviar', fn: (s) => s.status === 'por_enviar' },
   apartado: { label: 'Apartados', fn: (s) => s.status === 'apartado' },
+  preventa: { label: 'Preventas', fn: (s) => s.status === 'preventa' },
   por_cobrar: { label: 'Por cobrar', fn: (s) => s.status !== 'cancelado' && saleBalance(s) > 0.009 },
 };
 
@@ -178,8 +180,9 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
           )}</select></label>
           <label class="field"><span>Fecha</span><input type="date" id="date" value="${today()}"></label>
         </div>
+        <div id="promo-box"></div>
         <div class="grid2">
-          <label class="field"><span>Descuento (Q)</span><input id="discount" inputmode="decimal" placeholder="0"></label>
+          ${can('descuentos') ? '<label class="field"><span>Descuento a mano (Q)</span><input id="discount" inputmode="decimal" placeholder="0"></label>' : ''}
           <label class="field"><span>Envío cobrado (Q)</span><input id="shipping" inputmode="decimal" placeholder="0"></label>
         </div>
         <label class="check"><input type="checkbox" id="fullpaid" checked> Pagado completo</label>
@@ -197,13 +200,23 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
       const availEvent = (p, sz) => eventQty(ev, p.id, sz) - inCartOf(p.id, sz, true);
       const availStock = (p, sz) => (Number(p.stock?.[sz]) || 0) - inCartOf(p.id, sz, false);
       // Agrega al carrito; si ya está la misma prenda, talla, precio y origen, suma la cantidad.
-      const addItem = (p, size, qty, price, fromEvent = false) => {
-        const same = cart.find((c) => c.product_id === p.id && c.size === size && c.unit_price === price && Boolean(c.from_event) === fromEvent);
+      const addItem = (p, size, qty, price, fromEvent = false, preorder = false) => {
+        if (cart.length && cart.some((c) => Boolean(c.preorder) !== preorder)) {
+          toast(preorder ? 'Registra la preventa en una venta aparte' : 'Esta venta es de preventa: registra esta prenda aparte', 'error');
+          return false;
+        }
+        const same = cart.find((c) => c.product_id === p.id && c.size === size && c.unit_price === price && Boolean(c.from_event) === fromEvent && Boolean(c.preorder) === preorder);
         if (same) same.qty += qty;
         else
-          cart.push({ product_id: p.id, product_name: p.name, type: p.type, size, qty, unit_price: price, unit_cost: Number(p.cost) || 0, ...(ev ? { from_event: fromEvent } : {}) });
+          cart.push({
+            product_id: p.id, product_name: p.name, type: p.type, size, qty, unit_price: price, unit_cost: Number(p.cost) || 0,
+            ...(ev ? { from_event: fromEvent } : {}),
+            ...(preorder ? { preorder: true } : {}),
+          });
         renderCart();
+        return true;
       };
+      const isPreorderSale = () => cart.some((c) => c.preorder);
 
       const startScan = () =>
         openScanner({
@@ -245,15 +258,25 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
       const renderPicker = () => {
         const p = productById(pick.productId);
         if (!p) return ($('#picker', root).innerHTML = '');
-        const sizes = sizesOf(p).filter((sz) => sz in (p.stock || {}) || (ev && eventQty(ev, p.id, sz)));
+        const pre = preorderOpen(p);
+        const quotas = p.preorder?.quotas || {};
+        const preLeft = (sz) => (quotas[sz] == null ? null : quotas[sz] - preorderCount(p.id, sz) - inCartOf(p.id, sz));
+        const sizes = pre
+          ? sizesOf(p).filter((sz) => sz in quotas)
+          : sizesOf(p).filter((sz) => sz in (p.stock || {}) || (ev && eventQty(ev, p.id, sz)));
         $('#picker', root).innerHTML = `
           <div class="card">
             <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${thumb(p)}<div><b>${esc(p.name)}</b><div class="muted small">${esc([p.type, p.color].filter(Boolean).join(' · '))}</div></div></div>
+            ${pre ? `<div class="pre-note">⏳ <b>Preventa</b> · ${Q(p.preorder.price)}${p.preorder.end_date ? ` · cierra ${fmtDate(p.preorder.end_date)}` : ''}<br><span class="muted small">Se cobra completa y se aparta cuando llegue la producción.</span></div>` : ''}
             <div class="label" style="margin-bottom:6px">Talla</div>
             <div class="size-pick">${
               sizes.length
                 ? sizes
                     .map((sz) => {
+                      if (pre) {
+                        const l = preLeft(sz);
+                        return `<button type="button" class="size-btn ${pick.size === sz ? 'active' : ''}" data-sz="${esc(sz)}" ${l !== null && l <= 0 ? 'disabled' : ''}>${esc(sz)}<small>${l === null ? 'sin límite' : l > 0 ? `cupo ${l}` : 'cupo lleno'}</small></button>`;
+                      }
                       const left = ev ? availEvent(p, sz) : availStock(p, sz);
                       return `<button type="button" class="size-btn ${pick.size === sz ? 'active' : ''}" data-sz="${esc(sz)}">${esc(sz)}<small>${left} ${ev ? 'maleta' : 'disp.'}</small></button>`;
                     })
@@ -275,7 +298,11 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
         $('#qty', root).oninput = (e) => (pick.qty = Math.max(1, Math.round(num(e.target.value)) || 1));
         $('#price', root).oninput = (e) => (pick.price = e.target.value);
         $('#add', root).onclick = async () => {
-          if (ev) {
+          if (pre) {
+            const l = preLeft(pick.size);
+            if (l !== null && pick.qty > l) return toast(`Solo quedan ${Math.max(0, l)} de cupo en ${pick.size}`, 'error');
+            if (!addItem(p, pick.size, pick.qty, num(pick.price), false, true)) return;
+          } else if (ev) {
             const inBag = availEvent(p, pick.size);
             if (pick.qty <= inBag) addItem(p, pick.size, pick.qty, num(pick.price), true);
             else if (await confirmAction(`En la maleta ${inBag > 0 ? `solo quedan ${inBag}` : 'no hay'} ${pick.size}. ¿Vender de la bodega?`, { ok: 'Vender de bodega' }))
@@ -293,14 +320,75 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
       };
 
       const subtotal = () => sumBy(cart, (c) => c.qty * c.unit_price);
+      // ── Promociones: una sola por venta. La app sugiere; tú decides. ──
+      let applied = null; // { promo, discount }
+      let showCode = false;
+      const promoCtx = () => ({
+        cart,
+        date: $('#date', root)?.value,
+        channel: $('#channel', root)?.value,
+        eventId: ev?.id,
+        customerId: $('#customer', root)?.value || '',
+      });
+      const renderPromo = () => {
+        const box = $('#promo-box', root);
+        const manual = $('#discount', root);
+        if (applied) {
+          const r = evaluatePromo(applied.promo, promoCtx());
+          if (r.ok) applied.discount = r.discount;
+          else {
+            toast(`Se quitó la promo: ${r.reason}`, 'error');
+            applied = null;
+          }
+        }
+        if (manual) {
+          manual.disabled = Boolean(applied);
+          if (applied) manual.value = '';
+        }
+        if (!cart.length || isPreorderSale()) return (box.innerHTML = '');
+        if (applied) {
+          box.innerHTML = `<div class="promo-on"><span>✓ <b>${esc(applied.promo.name)}</b>${applied.promo.code ? ` <span class="muted small">(${esc(applied.promo.code)})</span>` : ''}</span>
+            <b class="num">−${Q(applied.discount)}</b><button type="button" class="btn-text" id="promo-off">Quitar</button></div>`;
+          $('#promo-off', root).onclick = () => ((applied = null), renderTotals());
+          return;
+        }
+        const best = suggestPromos(promoCtx())[0];
+        box.innerHTML = `
+          ${best ? `<div class="promo-tip"><span>💡 Aplica <b>${esc(best.promo.name)}</b> <span class="muted small">${esc(promoSummary(best.promo))}</span></span>
+            <button type="button" class="btn sm primary" id="promo-use">Aplicar −${Q(best.discount)}</button></div>` : ''}
+          ${showCode
+            ? `<div class="promo-code"><input id="promo-code" placeholder="Código de descuento" autocapitalize="characters" autocorrect="off" spellcheck="false"><button type="button" class="btn sm" id="promo-code-go">Aplicar</button></div>`
+            : '<button type="button" class="btn-text" id="promo-code-open">¿Tiene código de descuento?</button>'}`;
+        const use = $('#promo-use', root);
+        if (use) use.onclick = () => ((applied = { promo: best.promo, discount: best.discount }), renderTotals());
+        const open = $('#promo-code-open', root);
+        if (open) open.onclick = () => ((showCode = true), renderPromo(), $('#promo-code', root)?.focus());
+        const go = $('#promo-code-go', root);
+        if (go) {
+          const apply = () => {
+            const code = $('#promo-code', root).value.trim();
+            if (!code) return;
+            const promo = findByCode(code);
+            if (!promo) return toast(`El código ${code.toUpperCase()} no existe`, 'error');
+            const r = evaluatePromo(promo, promoCtx());
+            if (!r.ok) return toast(r.reason, 'error');
+            applied = { promo, discount: r.discount };
+            toast(`Código aplicado: −${Q(r.discount)}`);
+            renderTotals();
+          };
+          go.onclick = apply;
+          $('#promo-code', root).onkeydown = (e) => e.key === 'Enter' && (e.preventDefault(), apply());
+        }
+      };
       const renderTotals = () => {
+        renderPromo();
         const sub = subtotal();
-        const disc = num($('#discount', root).value);
+        const disc = applied ? applied.discount : num($('#discount', root)?.value);
         const ship = num($('#shipping', root).value);
         const total = Math.max(0, sub - disc + ship);
         $('#totals', root).innerHTML = `
           <div><span class="muted">Subtotal (${int(sumBy(cart, (c) => c.qty))} prendas)</span><span>${Q(sub)}</span></div>
-          ${disc ? `<div><span class="muted">Descuento</span><span>−${Q(disc)}</span></div>` : ''}
+          ${disc ? `<div><span class="muted">${applied ? esc(applied.promo.name) : 'Descuento'}</span><span>−${Q(disc)}</span></div>` : ''}
           ${ship ? `<div><span class="muted">Envío</span><span>${Q(ship)}</span></div>` : ''}
           <div class="grand"><span>Total</span><span>${Q(total)}</span></div>`;
         return { sub, disc, ship, total };
@@ -329,25 +417,38 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
               renderCart();
             })
         );
+        // Una venta de preventa se cobra completa y queda en estado "Preventa".
+        const pre = isPreorderSale();
+        const st = $('#status', root);
+        if (pre) {
+          if (!st.querySelector('option[value=preventa]')) st.insertAdjacentHTML('beforeend', '<option value="preventa">Preventa</option>');
+          st.value = 'preventa';
+          $('#fullpaid', root).checked = true;
+          $('#paid-wrap', root).classList.add('hidden');
+        } else if (st.value === 'preventa') st.value = 'entregado';
+        st.disabled = pre;
+        $('#fullpaid', root).disabled = pre;
         renderTotals();
       };
 
       productSel.onchange = () => {
         const p = productById(productSel.value);
-        pick = { productId: productSel.value, size: '', qty: 1, price: p ? p.price : '' };
+        pick = { productId: productSel.value, size: '', qty: 1, price: p ? (preorderOpen(p) ? p.preorder.price : p.price) : '' };
         const sizes = p ? sizesOf(p).filter((sz) => (Number(p.stock?.[sz]) || 0) > 0) : [];
         if (sizes.length === 1) pick.size = sizes[0];
         renderPicker();
       };
       $('#customer', root).onchange = (e) => $('#new-customer', root).classList.toggle('hidden', e.target.value !== '__new');
       $('#fullpaid', root).onchange = (e) => $('#paid-wrap', root).classList.toggle('hidden', e.target.checked);
+      $('#status', root).querySelector('option[value=preventa]')?.remove();
       $('#status', root).onchange = (e) => {
         if (e.target.value === 'apartado') {
           $('#fullpaid', root).checked = false;
           $('#paid-wrap', root).classList.remove('hidden');
         }
       };
-      ['#discount', '#shipping'].forEach((sel) => ($(sel, root).oninput = renderTotals));
+      ['#discount', '#shipping'].forEach((sel) => $(sel, root) && ($(sel, root).oninput = renderTotals));
+      ['#channel', '#customer', '#date'].forEach((sel) => $(sel, root).addEventListener('change', renderTotals));
       renderCart();
 
       $('#save', root).onclick = async (e) => {
@@ -374,7 +475,9 @@ export function openNewSale({ customerId, autoScan = false } = {}) {
               channel: $('#channel', root).value,
               ...(ev ? { event_id: ev.id } : {}),
               payment_method: $('#payment', root).value,
-              status: $('#status', root).value,
+              status: isPreorderSale() ? 'preventa' : $('#status', root).value,
+              ...(isPreorderSale() ? { preorder: true } : {}),
+              ...(applied ? { promo_id: applied.promo.id, promo_name: applied.promo.name, promo_code: applied.promo.code || null } : {}),
               subtotal: sub,
               discount: disc,
               shipping: ship,
@@ -427,7 +530,7 @@ export function openSale(id) {
         .join('')}</div>
       <div class="card totals" style="margin-top:10px">
         <div><span class="muted">Subtotal</span><span>${Q(s.subtotal)}</span></div>
-        ${Number(s.discount) ? `<div><span class="muted">Descuento</span><span>−${Q(s.discount)}</span></div>` : ''}
+        ${Number(s.discount) ? `<div><span class="muted">${s.promo_name ? esc(s.promo_name) + (s.promo_code ? ` (${esc(s.promo_code)})` : '') : 'Descuento'}</span><span>−${Q(s.discount)}</span></div>` : ''}
         ${Number(s.shipping) ? `<div><span class="muted">Envío</span><span>${Q(s.shipping)}</span></div>` : ''}
         <div class="grand"><span>Total</span><span>${Q(s.total)}</span></div>
         <div><span class="muted">Pagado</span><span>${Q(s.paid)}</span></div>

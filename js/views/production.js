@@ -1,4 +1,5 @@
-import { state, can, saveRow, deleteRow, receiveProduction, productById, batchQty, unitCostOf, PROD_STATUS, sizesOf } from '../db.js';
+import { state, can, saveRow, deleteRow, receiveProduction, productById, batchQty, unitCostOf, PROD_STATUS, sizesOf, allocatePreorders } from '../db.js';
+import { showAllocated } from './preorders.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 import { openLabels } from '../labels.js';
@@ -34,14 +35,14 @@ export function render(page) {
   $$('.row[data-id]', page).forEach((b) => (b.onclick = () => openBatch(b.dataset.id)));
 }
 
-export function openBatch(id) {
+export function openBatch(id, preset = {}) {
   if (!state.products.length) {
     toast('Primero crea el producto en Inventario');
     return bus.go('inventario');
   }
   const owner = can('costos');
   const editable = can('produccion');
-  const b = state.production.find((x) => x.id === id) || { quantities: {}, ordered_date: today(), status: 'en_produccion' };
+  const b = state.production.find((x) => x.id === id) || { quantities: {}, ordered_date: today(), status: 'en_produccion', ...preset };
   const received = b.status === 'recibido';
   const sizesFor = (pid) => {
     const p = productById(pid);
@@ -139,6 +140,19 @@ export function openBatch(id) {
             toast('Inventario actualizado');
             close();
             bus.rerender();
+            // Si hay preventas de este producto, se apartan primero (por orden de llegada).
+            if (state.sales.some((s) => s.status === 'preventa')) {
+              try {
+                const r = await allocatePreorders(b.product_id);
+                if (r.done.length) {
+                  bus.rerender();
+                  showAllocated(r);
+                  return;
+                }
+              } catch (err) {
+                toast('No se pudieron apartar las preventas: ' + err.message, 'error');
+              }
+            }
             const fresh = productById(b.product_id);
             if (fresh && can('inventario') && (await confirmAction(`¿Imprimir las ${batchQty(b)} etiquetas QR de lo que llegó?`, { ok: 'Imprimir etiquetas' })))
               openLabels(fresh, b.quantities);
