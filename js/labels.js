@@ -62,8 +62,9 @@ function wrapLines(ctx, text, maxW, maxLines) {
 // Dibuja una etiqueta y regresa el canvas.
 export async function renderLabel(p, size) {
   const { w, h } = labelSize();
-  const W = Math.round(w * PX_PER_MM);
-  const H = Math.round(h * PX_PER_MM);
+  const mm = PX_PER_MM;
+  const W = Math.round(w * mm);
+  const H = Math.round(h * mm);
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
@@ -71,64 +72,64 @@ export async function renderLabel(p, size) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#000';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'alphabetic';
 
-  const m = Math.round(1.6 * PX_PER_MM); // margen
-  const codeH = Math.round(2.6 * PX_PER_MM);
+  // Lo más visible: TALLA y PRECIO (arriba a la derecha). Abajo, nombre, tipo y drop.
+  const m = Math.round(1.4 * mm);
   const code = variantCode(p, size);
+  const bottomH = Math.round(Math.max(7, h * 0.27) * mm); // franja de nombre + tipo/drop
+  const topH = H - 2 * m - bottomH; // zona de QR, talla y precio
+  const codeH = Math.round(2.2 * mm);
 
-  // QR (módulos alineados a píxeles enteros para que la impresora térmica lo deje nítido)
+  // QR (módulos en píxeles enteros para que la impresora térmica lo deje nítido)
   const qr = await qrModules(code);
   const quiet = 1;
-  const maxQr = Math.min(H - 2 * m - codeH, Math.round(W * 0.47));
+  const maxQr = Math.min(topH - codeH, Math.round(W * 0.4));
   const mod = Math.max(1, Math.floor(maxQr / (qr.n + quiet * 2)));
   const qrPx = mod * (qr.n + quiet * 2);
   const qx = m - mod * quiet;
   const qy = m - mod * quiet;
   for (let r = 0; r < qr.n; r++)
     for (let col = 0; col < qr.n; col++) if (qr.dark(r, col)) ctx.fillRect(qx + (col + quiet) * mod, qy + (r + quiet) * mod, mod, mod);
-
-  // Código debajo del QR
-  const codeSize = fitText(ctx, code, qrPx, Math.round(2.1 * PX_PER_MM), 700, 10);
+  const codeSize = fitText(ctx, code, qrPx - 2 * mod, Math.round(1.9 * mm), 700, 9);
   ctx.font = `700 ${codeSize}px ${FONT}`;
-  ctx.fillText(code, qx + mod * quiet, qy + qrPx + Math.round(0.2 * PX_PER_MM));
+  ctx.fillText(code, qx + mod, qy + qrPx + codeSize * 0.95);
 
-  // Columna de texto
-  const tx = qx + qrPx + Math.round(1.4 * PX_PER_MM);
-  const tw = W - tx - m;
-  let y = m;
-  ctx.font = `800 ${Math.round(3.1 * PX_PER_MM)}px ${FONT}`;
-  const nameLines = wrapLines(ctx, p.name, tw, 2);
-  for (const line of nameLines) {
-    ctx.fillText(line, tx, y);
-    y += Math.round(3.4 * PX_PER_MM);
-  }
-  ctx.font = `500 ${Math.round(2.3 * PX_PER_MM)}px ${FONT}`;
-  const drop = dropById(p.drop_id)?.name;
-  for (const t of [p.type, drop].filter(Boolean)) {
-    ctx.fillText(ellipsis(ctx, t, tw), tx, y + Math.round(0.3 * PX_PER_MM));
-    y += Math.round(2.8 * PX_PER_MM);
-  }
-
-  // Talla grande (abajo a la derecha) y precio (abajo a la izquierda de la columna)
+  // Columna derecha: talla (caja negra) y precio
+  const rx = qx + qrPx + Math.round(1.2 * mm);
+  const rw = W - m - rx;
+  const priceH = Math.round(topH * 0.36);
+  const boxH = topH - priceH - Math.round(0.8 * mm);
+  ctx.fillRect(rx, m, rw, boxH);
   const sizeText = String(size).toUpperCase();
-  const boxH = Math.round(Math.min(9, h * 0.32) * PX_PER_MM);
-  ctx.font = `900 ${Math.round(boxH * 0.72)}px ${FONT}`;
-  const boxW = Math.max(boxH, ctx.measureText(sizeText).width + Math.round(2 * PX_PER_MM));
-  const bx = W - m - boxW;
-  const by = H - m - boxH;
-  ctx.fillRect(bx, by, boxW, boxH);
+  const sizeFont = fitText(ctx, sizeText, rw - Math.round(2 * mm), Math.round(boxH * 0.86), 900, 20);
+  ctx.font = `900 ${sizeFont}px ${FONT}`;
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(sizeText, bx + boxW / 2, by + boxH / 2 + Math.round(0.2 * PX_PER_MM));
+  ctx.fillText(sizeText, rx + rw / 2, m + boxH / 2 + sizeFont * 0.04);
   ctx.fillStyle = '#000';
-  ctx.textAlign = 'left';
+  // Precio sin centavos cuando es cerrado (Q 220) para que se vea más grande
+  const price = Number(p.price) || 0;
+  const priceText = Number.isInteger(price) ? `Q ${int(price)}` : Q(price);
+  const priceFont = fitText(ctx, priceText, rw, Math.round(priceH * 0.86), 900, 14);
+  ctx.font = `900 ${priceFont}px ${FONT}`;
   ctx.textBaseline = 'alphabetic';
-  const priceMax = bx - tx - Math.round(1 * PX_PER_MM);
-  const priceSize = fitText(ctx, Q(p.price), priceMax, Math.round(3.4 * PX_PER_MM), 900, 12);
-  ctx.font = `900 ${priceSize}px ${FONT}`;
-  ctx.fillText(Q(p.price), tx, H - m);
+  ctx.fillText(priceText, rx + rw / 2, m + topH - Math.round(0.9 * mm));
+  ctx.textAlign = 'left';
+
+  // Franja inferior: línea divisoria, nombre (negrita) y tipo · drop
+  const by = H - m - bottomH;
+  ctx.fillRect(m, by + Math.round(0.3 * mm), W - 2 * m, Math.max(2, Math.round(0.25 * mm)));
+  const tw = W - 2 * m;
+  const nameFont = Math.round(Math.min(3.2, bottomH / mm * 0.42) * mm);
+  ctx.font = `800 ${nameFont}px ${FONT}`;
+  ctx.fillText(ellipsis(ctx, p.name, tw), m, by + Math.round(0.9 * mm) + nameFont);
+  const sub = [p.type, dropById(p.drop_id)?.name].filter(Boolean).join(' · ');
+  // Se achica un poco si no cabe, antes de cortar con "…"
+  const subFont = fitText(ctx, sub, tw, Math.round(nameFont * 0.78), 500, Math.round(nameFont * 0.58));
+  ctx.font = `500 ${subFont}px ${FONT}`;
+  ctx.fillText(ellipsis(ctx, sub, tw), m, H - m - Math.round(0.2 * mm));
   return c;
 }
 
