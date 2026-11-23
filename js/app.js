@@ -14,7 +14,7 @@ import * as production from './views/production.js';
 import * as expenses from './views/expenses.js';
 import * as drops from './views/drops.js';
 import * as settings from './views/settings.js';
-import { userButtonHTML, toggleUserMenu, closeUserMenu } from './views/more.js';
+import { userButtonHTML, toggleUserMenu, closeUserMenu, sideNavHTML, renderSideNav, bindSideNav, closeSideNav } from './views/more.js';
 import * as usersView from './views/users.js';
 import * as catalogs from './views/catalogs.js';
 import * as eventsView from './views/events.js';
@@ -54,11 +54,13 @@ function shell() {
   const t5 = fifthTab();
   app.innerHTML = `
     <header class="topbar">
+      <button class="nav-btn" id="nav-btn" type="button" aria-label="Secciones" aria-controls="sidenav" aria-expanded="false">${icons.menu}</button>
       <a class="brand" id="brand" href="#inicio" aria-label="TRCO, ir a Inicio"><h1>TRCO<span>.</span></h1></a>
       <span class="topbar-spacer"></span>
       ${CLOUD ? '' : '<span class="demo-pill" title="Los datos se guardan solo en este dispositivo">Demo</span>'}
       ${userButtonHTML()}
     </header>
+    ${sideNavHTML()}
     <a class="ev-banner hidden" id="ev-banner" href="#eventos"></a>
     <main class="page" id="page"></main>
     <nav class="tabbar" aria-label="Navegación">
@@ -69,6 +71,7 @@ function shell() {
       <a class="tab" data-tab="${t5.key}" href="#${t5.key}">${t5.icon}<span>${t5.label}</span></a>
     </nav>`;
   $('#user-btn').addEventListener('click', toggleUserMenu);
+  bindSideNav();
   $('#brand').addEventListener('click', () => {
     if (location.hash === '#inicio' || location.hash === '') window.scrollTo({ top: 0, behavior: 'smooth' });
   });
@@ -86,6 +89,7 @@ function render() {
     return;
   }
   closeUserMenu();
+  closeSideNav();
   // Al cambiar de pantalla se cierran las hojas abiertas.
   if (location.hash !== lastRoute) document.querySelectorAll('.sheet-wrap [data-close]').forEach((b) => b.click());
   document.title = `${r.title} · TRCO`;
@@ -93,6 +97,7 @@ function render() {
   const page = $('#page');
   page.classList.toggle('wide', Boolean(r.wide));
   renderEventBanner();
+  renderSideNav(r.name);
   const key = location.hash;
   try {
     r.view.render(page, r.params);
