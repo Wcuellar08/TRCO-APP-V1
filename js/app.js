@@ -20,7 +20,7 @@ import * as usersView from './views/users.js';
 const routes = {
   inicio: { view: dashboard, title: 'Inicio', tab: 'inicio', wide: true },
   inventario: { view: inventory, title: 'Inventario', tab: 'inventario' },
-  ventas: { view: sales, title: 'Ventas', tab: 'ventas' },
+  ventas: { view: sales, title: 'Pedidos', tab: 'ventas' },
   reportes: { view: reports, title: 'Reportes', tab: 'reportes', perm: 'reportes' },
   clientes: { view: customers, title: 'Clientes', tab: 'clientes', perm: 'clientes' },
   produccion: { view: production, title: 'Producción', tab: 'produccion' },
@@ -58,8 +58,8 @@ function shell() {
     <nav class="tabbar" aria-label="Navegación">
       <a class="tab" data-tab="inicio" href="#inicio">${icons.home}<span>Inicio</span></a>
       <a class="tab" data-tab="inventario" href="#inventario">${icons.shirt}<span>Inventario</span></a>
-      ${can('vender') ? `<a class="tab tab-sell" id="tab-sell" href="#" aria-label="Nueva venta"><span class="plus">${icons.plus}</span></a>` : '<span></span>'}
-      <a class="tab" data-tab="ventas" href="#ventas">${icons.receipt}<span>Ventas</span></a>
+      ${can('vender') ? `<a class="tab tab-sell" id="tab-sell" href="#" aria-label="Vender: registrar una venta"><span class="plus">${icons.plus}</span><span>Vender</span></a>` : '<span></span>'}
+      <a class="tab" data-tab="ventas" href="#ventas">${icons.receipt}<span>Pedidos</span></a>
       <a class="tab" data-tab="${t5.key}" href="#${t5.key}">${t5.icon}<span>${t5.label}</span></a>
     </nav>`;
   $('#user-btn').addEventListener('click', toggleUserMenu);

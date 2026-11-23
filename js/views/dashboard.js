@@ -7,7 +7,7 @@ import {
   $, $$, esc, Q, Qs, int, pct, today, addDays, parseYmd, startOfMonth, startOfWeek, fmtDate, sumBy, groupSum, sheet,
 } from '../ui.js';
 import { bus } from '../bus.js';
-import { saleRow, bindSaleRows, openNewSale, setFilter } from './sales.js';
+import { saleRow, bindSaleRows, setFilter } from './sales.js';
 import { openProduct } from './inventory.js';
 
 // ── Periodo ──
@@ -285,10 +285,9 @@ export function render(page) {
       ${donut('color', 'Por color', data.color)}
     </div>` : ''}
 
-    ${can('vender') ? '<div class="btn-row"><button class="btn primary" id="q-sale">+ Nueva venta</button></div>' : ''}
 
-    <div class="section"><h2>Últimas ventas</h2><a href="#ventas">Ver todas</a></div>
-    ${state.sales.length ? `<div class="list">${state.sales.slice(0, 5).map(saleRow).join('')}</div>` : '<div class="card muted small">Aún no hay ventas. Toca el botón + para registrar la primera.</div>'}
+    <div class="section"><h2>Últimas ventas</h2><a href="#ventas">Ver pedidos</a></div>
+    ${state.sales.length ? `<div class="list">${state.sales.slice(0, 5).map(saleRow).join('')}</div>` : '<div class="card muted small">Aún no hay ventas. Toca Vender (＋) abajo para registrar la primera.</div>'}
   `;
 
   $$('[data-p]', page).forEach((b) => (b.onclick = () => ((preset = b.dataset.p), render(page))));
@@ -299,8 +298,6 @@ export function render(page) {
     $('#to', page).onchange = (e) => ((custom.to = e.target.value || custom.to), render(page));
   }
   $$('[data-attn]', page).forEach((b) => (b.onclick = () => attn[Number(b.dataset.attn)].go()));
-  const qs = $('#q-sale', page);
-  if (qs) qs.onclick = () => openNewSale();
   bindDonuts(page, data);
   bindSaleRows(page);
 }

@@ -68,8 +68,7 @@ export function render(page) {
   const counts = Object.fromEntries(Object.entries(FILTERS).map(([k, f]) => [k, state.sales.filter(f.fn).length]));
 
   page.innerHTML = `
-    ${can('vender') ? '<div class="btn-row" style="margin-top:0"><button class="btn primary" id="new-sale">+ Nueva venta</button></div>' : ''}
-    <div class="chips" style="margin:14px -16px 10px">
+    <div class="chips" style="margin:0 -16px 10px">
       ${Object.entries(FILTERS)
         .map(([k, f]) => `<button class="chip ${filter === k ? 'active' : ''}" data-f="${k}">${f.label}${k !== 'todas' && counts[k] ? ` · ${counts[k]}` : ''}</button>`)
         .join('')}
@@ -84,12 +83,10 @@ export function render(page) {
                 <div class="list">${rows.map(saleRow).join('')}</div>`;
             })
             .join('')
-        : emptyState(state.sales.length ? 'No hay ventas con este filtro.' : 'Aún no hay ventas registradas.')
+        : emptyState(state.sales.length ? 'No hay pedidos con este filtro.' : `Aún no hay ventas registradas.${can('vender') ? ' Toca Vender (＋) abajo para registrar la primera.' : ''}`)
     }
     ${all.length > limit ? `<div class="btn-row"><button class="btn" id="more">Ver más (${all.length - limit})</button></div>` : ''}`;
 
-  const ns = $('#new-sale', page);
-  if (ns) ns.onclick = () => openNewSale();
   $$('[data-f]', page).forEach((b) => (b.onclick = () => ((filter = b.dataset.f), (limit = 60), render(page))));
   const qi = $('#q', page);
   qi.oninput = () => {
