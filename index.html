@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>TRCO</title>
   <meta name="description" content="Control de inventario, ventas y reportes de TRCO" />
   <meta name="theme-color" content="#0a0a0a" />
@@ -20,6 +20,19 @@
   <div id="app"><div class="loading"><div class="logo">TRCO<span>.</span></div></div></div>
   <script type="module" src="js/app.js"></script>
   <script>
+    // Sin zoom: Safari en iPhone/iPad ignora user-scalable=no, así que se bloquea
+    // el pellizco (dos dedos) y el doble toque aquí.
+    (function () {
+      var stop = function (e) { e.preventDefault(); };
+      document.addEventListener('gesturestart', stop, { passive: false });
+      document.addEventListener('gesturechange', stop, { passive: false });
+      document.addEventListener('gestureend', stop, { passive: false });
+      document.addEventListener('touchmove', function (e) {
+        if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault();
+      }, { passive: false });
+      // El doble toque para acercar se desactiva con CSS (touch-action), así los
+      // toques rápidos en botones como + y − siguen funcionando.
+    })();
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
     }
