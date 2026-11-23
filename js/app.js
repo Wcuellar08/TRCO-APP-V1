@@ -14,21 +14,20 @@ import * as production from './views/production.js';
 import * as expenses from './views/expenses.js';
 import * as drops from './views/drops.js';
 import * as settings from './views/settings.js';
-import * as more from './views/more.js';
+import { userButtonHTML, toggleUserMenu, closeUserMenu } from './views/more.js';
 import * as usersView from './views/users.js';
 
 const routes = {
   inicio: { view: dashboard, title: 'Inicio', tab: 'inicio', wide: true },
   inventario: { view: inventory, title: 'Inventario', tab: 'inventario' },
   ventas: { view: sales, title: 'Ventas', tab: 'ventas' },
-  mas: { view: more, title: 'Más', tab: 'mas' },
-  reportes: { view: reports, title: 'Reportes', tab: 'mas', back: 'mas', perm: 'reportes' },
-  clientes: { view: customers, title: 'Clientes', tab: 'mas', back: 'mas', perm: 'clientes' },
-  produccion: { view: production, title: 'Producción', tab: 'mas', back: 'mas' },
-  gastos: { view: expenses, title: 'Gastos', tab: 'mas', back: 'mas', perm: 'gastos' },
-  drops: { view: drops, title: 'Drops', tab: 'mas', back: 'mas' },
-  usuarios: { view: usersView, title: 'Usuarios', tab: 'mas', back: 'mas', owner: true },
-  ajustes: { view: settings, title: 'Ajustes', tab: 'mas', back: 'mas' },
+  reportes: { view: reports, title: 'Reportes', tab: 'reportes', perm: 'reportes' },
+  clientes: { view: customers, title: 'Clientes', tab: 'clientes', perm: 'clientes' },
+  produccion: { view: production, title: 'Producción', tab: 'produccion' },
+  gastos: { view: expenses, title: 'Gastos', perm: 'gastos' },
+  drops: { view: drops, title: 'Drops' },
+  usuarios: { view: usersView, title: 'Usuarios', owner: true },
+  ajustes: { view: settings, title: 'Ajustes' },
 };
 
 const app = $('#app');
@@ -39,13 +38,23 @@ function currentRoute() {
   return { name: r, params: rest, ...routes[r] };
 }
 
+// Quinta pestaña: Reportes; si no tiene ese permiso, Clientes; si tampoco, Producción.
+function fifthTab() {
+  if (can('reportes')) return { key: 'reportes', icon: icons.chart, label: 'Reportes' };
+  if (can('clientes')) return { key: 'clientes', icon: icons.users, label: 'Clientes' };
+  return { key: 'produccion', icon: icons.factory, label: 'Producción' };
+}
+
+const TAB_ROUTES = () => ['inicio', 'inventario', 'ventas', fifthTab().key];
+
 function shell() {
+  const t5 = fifthTab();
   app.innerHTML = `
     <header class="topbar">
-      <a class="back hidden btn-text" id="back" href="#mas">‹ Más</a>
+      <a class="back hidden btn-text" id="back" href="#inicio">‹ Atrás</a>
       <h1 id="title"></h1>
       ${CLOUD ? '' : '<span class="demo-pill" title="Los datos se guardan solo en este dispositivo">Demo</span>'}
-      <span class="brand-mark">TRCO</span>
+      ${userButtonHTML()}
     </header>
     <main class="page" id="page"></main>
     <nav class="tabbar" aria-label="Navegación">
@@ -53,8 +62,16 @@ function shell() {
       <a class="tab" data-tab="inventario" href="#inventario">${icons.shirt}<span>Inventario</span></a>
       ${can('vender') ? `<a class="tab tab-sell" id="tab-sell" href="#" aria-label="Nueva venta"><span class="plus">${icons.plus}</span></a>` : '<span></span>'}
       <a class="tab" data-tab="ventas" href="#ventas">${icons.receipt}<span>Ventas</span></a>
-      <a class="tab" data-tab="mas" href="#mas">${icons.grid}<span>Más</span></a>
+      <a class="tab" data-tab="${t5.key}" href="#${t5.key}">${t5.icon}<span>${t5.label}</span></a>
     </nav>`;
+  $('#user-btn').addEventListener('click', toggleUserMenu);
+  $('#back').addEventListener('click', (e) => {
+    // Regresa a la pantalla anterior si venías de la app; si no, a Inicio.
+    if (inAppNavs > 0) {
+      e.preventDefault();
+      history.back();
+    }
+  });
   $('#tab-sell')?.addEventListener('click', (e) => {
     e.preventDefault();
     sales.openNewSale();
@@ -68,10 +85,11 @@ function render() {
     location.hash = '#inicio';
     return;
   }
+  closeUserMenu();
   document.title = `${r.title} · TRCO`;
   $('#title').textContent = r.title;
   const back = $('#back');
-  back.classList.toggle('hidden', !r.back);
+  back.classList.toggle('hidden', TAB_ROUTES().includes(r.name));
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === r.tab));
   const page = $('#page');
   page.classList.toggle('wide', Boolean(r.wide));
@@ -224,8 +242,10 @@ async function syncIfStale(force = false) {
   }
 }
 
+let inAppNavs = 0;
 window.addEventListener('hashchange', () => {
   if (!$('#page')) return;
+  inAppNavs++;
   render();
   syncIfStale();
 });
