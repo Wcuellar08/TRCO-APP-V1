@@ -16,6 +16,7 @@ import * as drops from './views/drops.js';
 import * as settings from './views/settings.js';
 import { userButtonHTML, toggleUserMenu, closeUserMenu } from './views/more.js';
 import * as usersView from './views/users.js';
+import * as catalogs from './views/catalogs.js';
 
 const routes = {
   inicio: { view: dashboard, title: 'Inicio', tab: 'inicio', wide: true },
@@ -27,6 +28,7 @@ const routes = {
   gastos: { view: expenses, title: 'Gastos', perm: 'gastos' },
   drops: { view: drops, title: 'Drops' },
   usuarios: { view: usersView, title: 'Usuarios', owner: true },
+  catalogos: { view: catalogs, title: 'Catálogos', owner: true },
   ajustes: { view: settings, title: 'Ajustes' },
 };
 

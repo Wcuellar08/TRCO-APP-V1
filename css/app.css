@@ -551,3 +551,25 @@ main.page.wide { max-width: 1120px; }
 .lbl-row { cursor: default; }
 .lbl-row .size-btn.active { border-color: var(--accent); }
 .scan-manual input::placeholder { text-transform: none; }
+
+/* ── Catálogos ── */
+.cat-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.cat-card + .cat-card { margin-top: 12px; }
+.cat-card header h3 { margin: 0; font-size: 16px; font-weight: 800; }
+.cat-card header h3 .muted { font-weight: 600; font-size: 13px; margin-left: 4px; }
+.cat-card header p { margin: 2px 0 0; font-size: 13px; color: var(--text-2); }
+.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--line); background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.tag-chip button { background: none; border: 0; color: var(--text); cursor: pointer; font-size: 15px; }
+.tag-name { padding: 7px 4px 7px 14px; font-weight: 600; }
+.tag-x { padding: 0 12px 0 8px; color: var(--text-3) !important; font-size: 20px !important; line-height: 1; }
+.tag-x:hover, .tag-x:active { color: var(--danger) !important; }
+.tag-chip:active { border-color: var(--text-3); }
+.cat-add { display: flex; gap: 8px; }
+.cat-add input {
+  flex: 1; min-width: 0; height: 40px; border-radius: 10px; border: 1px dashed var(--line);
+  background: transparent; padding: 0 12px; font-size: 16px; outline: none;
+}
+.cat-add input:focus { border-style: solid; border-color: var(--accent); }
+.card-link { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.card-link .chev { font-size: 22px; }

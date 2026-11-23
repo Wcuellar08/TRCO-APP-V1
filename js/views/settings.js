@@ -7,14 +7,6 @@ import { autoScanEnabled, setAutoScan } from './sales.js';
 import { bus } from '../bus.js';
 import { buildDemoData } from '../demo.js';
 
-const LISTS = [
-  ['types', 'Tipos de prenda', 'Playera, Playera oversize, Hoodie…'],
-  ['sizes', 'Tallas', 'XS, S, M, L, XL, XXL'],
-  ['channels', 'Canales de venta', 'Instagram, WhatsApp, Evento…'],
-  ['payments', 'Métodos de pago', 'Efectivo, Transferencia…'],
-  ['expense_categories', 'Categorías de gastos', 'Publicidad, Envíos…'],
-];
-
 export function render(page) {
   const owner = isOwner();
   const exportOk = can('exportar');
@@ -33,14 +25,10 @@ export function render(page) {
 
     ${owner ? `
     <div class="section"><h2>Catálogos</h2></div>
-    <form class="card form" id="lists">
-      ${LISTS.map(
-        ([k, label, ph]) => `<label class="field"><span>${label}</span><input name="${k}" value="${esc(state.settings[k].join(', '))}" placeholder="${ph}">
-        </label>`
-      ).join('')}
-      <span class="hint muted small">Separa con comas. Cambiar un nombre aquí no cambia ventas pasadas.</span>
-      <button class="btn primary block" type="submit">Guardar catálogos</button>
-    </form>
+    <a class="row card-link" href="#catalogos">
+      <div class="row-main"><div class="row-title">Tipos, tallas, canales, pagos y gastos</div>
+      <div class="row-sub">Las opciones de los menús de la app</div></div><span class="chev">›</span>
+    </a>
 
     <div class="section"><h2>Etiquetas QR</h2></div>
     <form class="card form" id="label-form">
@@ -87,24 +75,6 @@ export function render(page) {
     <div class="btn-row"><button class="btn danger" id="logout">Cerrar sesión</button></div>
   `;
 
-
-  const lists = $('#lists', page);
-  if (lists)
-    lists.onsubmit = async (e) => {
-      e.preventDefault();
-      const data = { ...state.settings };
-      for (const [k] of LISTS) {
-        const vals = [...new Set(lists[k].value.split(',').map((s) => s.trim()).filter(Boolean))];
-        if (vals.length) data[k] = vals;
-      }
-      try {
-        await saveSettings(data);
-        toast('Catálogos guardados');
-        bus.rerender();
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    };
 
   const labelForm = $('#label-form', page);
   if (labelForm)

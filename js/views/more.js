@@ -20,7 +20,8 @@ function items() {
     { href: 'drops', icon: icons.fire, title: 'Drops', sub: `${int(state.drops.length)} colecciones` },
     can('gastos') && { href: 'gastos', icon: icons.wallet, title: 'Gastos', sub: 'Publicidad, envíos, empaque…' },
     isOwner() && { href: 'usuarios', icon: icons.key, title: 'Usuarios', sub: 'Permisos y contraseñas' },
-    { href: 'ajustes', icon: icons.gear, title: 'Ajustes', sub: isOwner() ? 'Catálogos, respaldo, mi cuenta' : 'Mi cuenta' },
+    isOwner() && { href: 'catalogos', icon: icons.tag, title: 'Catálogos', sub: 'Tipos, tallas, canales y pagos' },
+    { href: 'ajustes', icon: icons.gear, title: 'Ajustes', sub: isOwner() ? 'Etiquetas, respaldo, mi cuenta' : 'Mi cuenta' },
   ].filter(Boolean);
 }
 
