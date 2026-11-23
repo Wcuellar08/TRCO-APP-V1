@@ -1,6 +1,6 @@
 // Service worker: permite abrir la app sin internet y que cargue rápido.
 // Cambia VERSION cuando publiques cambios para forzar la actualización.
-const VERSION = 'trco-v1.0.0';
+const VERSION = 'trco-v1.1.0';
 const SHELL = [
   './',
   'index.html',
@@ -39,13 +39,13 @@ self.addEventListener('activate', (e) => {
 });
 
 // Archivos de la app: responde rápido desde caché y actualiza en segundo plano.
-// Datos (Supabase): siempre por red.
+// Datos (Firestore): siempre por red; solo se guardan en caché las librerías de Firebase.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
-  const supabaseLib = url.hostname === 'cdn.jsdelivr.net';
-  if (!sameOrigin && !supabaseLib) return;
+  const firebaseLib = url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/');
+  if (!sameOrigin && !firebaseLib) return;
   e.respondWith(
     caches.open(VERSION).then(async (cache) => {
       const cached = await cache.match(e.request, { ignoreSearch: sameOrigin });

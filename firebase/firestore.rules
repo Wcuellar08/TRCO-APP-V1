@@ -1,0 +1,62 @@
+rules_version = '2';
+
+// ════════════════════════════════════════════════════════════════
+//  TRCO APP · Reglas de seguridad de Firestore
+//  Pega TODO este archivo en Firebase Console → Firestore Database
+//  → pestaña "Reglas" → Publicar.
+//
+//  Roles (campo `role` en /profiles/{uid}):
+//    owner   = dueño: ve todo (costos, ganancias, gastos, equipo)
+//    staff   = equipo: inventario, ventas, clientes, producción, drops
+//    pending = cuenta nueva esperando aprobación (no ve nada)
+// ════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function profilePath() { return /databases/$(database)/documents/profiles/$(request.auth.uid); }
+    function role() {
+      return signedIn() && exists(profilePath()) ? get(profilePath()).data.role : 'none';
+    }
+    function isMember() { return role() in ['owner', 'staff']; }
+    function isOwner() { return role() == 'owner'; }
+
+    // Marca quién es el dueño. Solo se puede crear una vez (la primera cuenta).
+    match /meta/owner {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /profiles/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isMember());
+      // Al registrarse: queda "pending", salvo la primera cuenta, que es el dueño.
+      allow create: if signedIn() && uid == request.auth.uid && (
+        request.resource.data.role == 'pending' ||
+        (request.resource.data.role == 'owner'
+          && !exists(/databases/$(database)/documents/meta/owner)
+          && getAfter(/databases/$(database)/documents/meta/owner).data.uid == request.auth.uid)
+      );
+      allow update: if isOwner();
+      allow delete: if isOwner() && uid != request.auth.uid;
+    }
+
+    // Catálogos (tipos, tallas, canales…): todos leen, solo el dueño cambia.
+    match /settings/{id} {
+      allow read: if isMember();
+      allow write: if isOwner();
+    }
+
+    // Operación diaria: dueño y equipo.
+    match /products/{id}   { allow read, write: if isMember(); }
+    match /sales/{id}      { allow read, write: if isMember(); }
+    match /sale_items/{id} { allow read, write: if isMember(); }
+    match /customers/{id}  { allow read, write: if isMember(); }
+    match /production/{id} { allow read, write: if isMember(); }
+    match /drops/{id}      { allow read, write: if isMember(); }
+
+    // Gastos: SOLO el dueño.
+    match /expenses/{id}   { allow read, write: if isOwner(); }
+  }
+}

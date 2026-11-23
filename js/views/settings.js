@@ -19,8 +19,15 @@ const ROLES = [
   { value: 'pending', label: 'Sin acceso' },
 ];
 
+let teamFetched = 0;
+
 export function render(page) {
   const owner = isOwner();
+  // Trae al equipo actualizado (alguien pudo crear su cuenta hace poco).
+  if (CLOUD && owner && Date.now() - teamFetched > 5000) {
+    teamFetched = Date.now();
+    refresh(['profiles']).then(() => location.hash === '#ajustes' && render(page)).catch(() => {});
+  }
   const me = state.profile;
   page.innerHTML = `
     <div class="section" style="margin-top:0"><h2>Mi cuenta</h2></div>
@@ -28,7 +35,7 @@ export function render(page) {
       <div class="kv"><span>Nombre</span><span>${esc(me?.name)}</span></div>
       ${CLOUD ? `<div class="kv"><span>Correo</span><span>${esc(me?.email || state.user?.email)}</span></div>` : ''}
       <div class="kv"><span>Rol</span><span>${owner ? 'Dueño' : 'Equipo'}</span></div>
-      <div class="kv"><span>Datos</span><span>${CLOUD ? 'En la nube (Supabase)' : 'Solo este dispositivo (demo)'}</span></div>
+      <div class="kv"><span>Datos</span><span>${CLOUD ? 'En la nube (Firebase)' : 'Solo este dispositivo (demo)'}</span></div>
     </div>
 
     ${CLOUD && owner ? `
@@ -66,7 +73,7 @@ export function render(page) {
     ${!CLOUD ? `
     <div class="section"><h2>Modo demo</h2></div>
     <div class="card form">
-      <p class="muted small" style="margin:0">Los datos viven solo en este navegador. Para compartir con tu equipo y no perder nada, conecta Supabase (ver README del proyecto).</p>
+      <p class="muted small" style="margin:0">Los datos viven solo en este navegador. Para compartir con tu equipo y no perder nada, conecta Firebase (ver README del proyecto).</p>
       <button class="btn block" id="seed">Cargar datos de ejemplo</button>
       <button class="btn danger block" id="wipe">Borrar todos los datos del demo</button>
     </div>` : ''}

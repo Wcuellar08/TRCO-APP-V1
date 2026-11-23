@@ -1,15 +1,21 @@
 // ─────────────────────────────────────────────────────────────
 //  CONFIGURACIÓN DE TRCO APP
 //
-//  Si dejas estos valores vacíos, la app funciona en MODO DEMO:
+//  Si dejas FIREBASE_CONFIG vacío, la app funciona en MODO DEMO:
 //  los datos se guardan solo en este dispositivo (navegador).
 //
-//  Para usar la nube (datos compartidos con tu equipo), crea un
-//  proyecto gratis en https://supabase.com y pega aquí:
-//    Project Settings → API → "Project URL" y "anon public key"
-//  (La anon key es pública por diseño; la seguridad la dan las
-//   reglas de supabase/schema.sql.)
+//  Para usar la nube (datos compartidos con tu equipo):
+//    Firebase Console → ⚙️ Configuración del proyecto → General →
+//    "Tus apps" → app web (</>) → copia aquí el objeto firebaseConfig.
+//  (Estas claves son públicas por diseño; la seguridad la dan las
+//   reglas de firebase/firestore.rules.)
 // ─────────────────────────────────────────────────────────────
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const FIREBASE_CONFIG = {
+  apiKey: '',
+  authDomain: '',
+  projectId: '',
+  storageBucket: '',
+  messagingSenderId: '',
+  appId: '',
+};

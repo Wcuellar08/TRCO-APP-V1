@@ -1,4 +1,4 @@
-import { CLOUD, state, currentUser, loadAll, signIn, signUp, signOut, demoReplace, refresh } from './db.js';
+import { CLOUD, state, currentUser, loadAll, signIn, signUp, signOut, sendReset, demoReplace, refresh } from './db.js';
 import { buildDemoData } from './demo.js';
 import { $, esc, toast } from './ui.js';
 import { icons } from './icons.js';
@@ -98,6 +98,7 @@ function authScreen(mode = 'login', msg = '') {
       </form>
       <p style="margin-top:18px;text-align:center">
         <button class="btn-text" id="auth-toggle">${mode === 'login' ? '¿No tienes cuenta? Crear una' : 'Ya tengo cuenta'}</button>
+        ${mode === 'login' ? '<br><button class="btn-text" id="forgot" style="color:var(--text-2)">Olvidé mi contraseña</button>' : ''}
       </p>
     </div></div>`;
   $('#auth-toggle').onclick = () => authScreen(mode === 'login' ? 'signup' : 'login');
@@ -111,24 +112,28 @@ function authScreen(mode = 'login', msg = '') {
         await signIn(f.email.trim(), f.password);
         await boot();
       } else {
-        const { needsConfirm } = await signUp(f.email.trim(), f.password, f.name.trim());
-        if (needsConfirm) authScreen('login', 'Te enviamos un correo para confirmar tu cuenta. Confírmala y luego entra.');
-        else await boot();
+        await signUp(f.email.trim(), f.password, f.name.trim());
+        await boot();
       }
     } catch (err) {
       btn.disabled = false;
-      toast(traducirError(err.message), 'error');
+      toast(err.message, 'error');
     }
   };
+  const forgot = $('#forgot');
+  if (forgot)
+    forgot.onclick = async () => {
+      const email = $('#auth-form').email.value.trim();
+      if (!email) return toast('Escribe tu correo primero', 'error');
+      try {
+        await sendReset(email);
+        authScreen('login', `Te enviamos un correo a ${email} para cambiar tu contraseña.`);
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
 }
 
-function traducirError(m = '') {
-  if (/Invalid login/i.test(m)) return 'Correo o contraseña incorrectos';
-  if (/Email not confirmed/i.test(m)) return 'Primero confirma tu correo';
-  if (/already registered/i.test(m)) return 'Ese correo ya tiene cuenta';
-  if (/Password should be/i.test(m)) return 'La contraseña debe tener al menos 6 caracteres';
-  return m || 'Ocurrió un error';
-}
 
 function pendingScreen() {
   app.innerHTML = `
@@ -174,5 +179,25 @@ async function boot() {
   }
 }
 
-window.addEventListener('hashchange', () => $('#page') && render());
+// Con la nube, trae lo que registró el resto del equipo: al volver a la app
+// o al cambiar de pantalla (máximo cada 30 segundos).
+let lastSync = Date.now();
+async function syncIfStale(force = false) {
+  if (!CLOUD || !$('#page') || (!force && Date.now() - lastSync < 30000)) return;
+  lastSync = Date.now();
+  try {
+    await refresh();
+    if (!document.querySelector('.sheet-wrap')) render();
+  } catch (e) {
+    console.warn('No se pudo actualizar', e);
+  }
+}
+
+window.addEventListener('hashchange', () => {
+  if (!$('#page')) return;
+  render();
+  syncIfStale();
+});
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && syncIfStale());
+bus.sync = () => syncIfStale(true);
 boot();

@@ -1,10 +1,10 @@
-// Capa de datos: el mismo código funciona con Supabase (nube) o con
+// Capa de datos: el mismo código funciona con Firebase (nube) o con
 // localStorage (modo demo). Toda la app lee de `state` y escribe con
 // las funciones de este archivo.
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { FIREBASE_CONFIG } from './config.js';
 
-export const CLOUD = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const CLOUD = Boolean(FIREBASE_CONFIG?.apiKey && FIREBASE_CONFIG?.projectId);
 
 export const DEFAULT_SETTINGS = {
   types: ['Playera', 'Playera oversize', 'Playera boxy', 'Playera manga larga'],
@@ -80,6 +80,10 @@ const local = {
   async all(t) {
     return structuredClone(this.read()[t]);
   },
+  async getOne(t, id) {
+    const row = this.read()[t].find((r) => String(r.id) === String(id));
+    return row ? structuredClone(row) : null;
+  },
   async insert(t, rows) {
     const d = this.read();
     const now = new Date().toISOString();
@@ -124,50 +128,120 @@ const local = {
   },
 };
 
-// ───────────────────────── Adaptador Supabase (nube) ─────────────────────────
-let sb = null;
+// ───────────────────────── Adaptador Firebase (nube) ─────────────────────────
+const FB = 'https://www.gstatic.com/firebasejs/10.12.2';
+let fb = null;
+async function firebase() {
+  if (fb) return fb;
+  const [appMod, authMod, fsMod] = await Promise.all([
+    import(`${FB}/firebase-app.js`),
+    import(`${FB}/firebase-auth.js`),
+    import(`${FB}/firebase-firestore.js`),
+  ]);
+  const app = appMod.initializeApp(FIREBASE_CONFIG);
+  fb = { ...authMod, ...fsMod, auth: authMod.getAuth(app), fs: fsMod.getFirestore(app) };
+  if (window.TRCO_EMULATOR) {
+    // Solo para pruebas locales con el emulador de Firebase.
+    authMod.connectAuthEmulator(fb.auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    fsMod.connectFirestoreEmulator(fb.fs, '127.0.0.1', 8080);
+  }
+  return fb;
+}
+
 const cloud = {
-  async client() {
-    if (sb) return sb;
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
-    sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-    return sb;
-  },
-  check({ data, error }) {
-    if (error) throw new Error(error.message);
-    return data;
-  },
   async session() {
-    const c = await this.client();
-    const { data } = await c.auth.getSession();
-    return data.session?.user ?? null;
+    const f = await firebase();
+    return new Promise((resolve) => {
+      const stop = f.onAuthStateChanged(f.auth, (u) => {
+        stop();
+        resolve(u ? { id: u.uid, email: u.email, name: u.displayName } : null);
+      });
+    });
   },
   async all(t) {
-    const c = await this.client();
+    const f = await firebase();
+    const snap = await f.getDocs(f.collection(f.fs, t));
+    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  },
+  async getOne(t, id) {
+    const f = await firebase();
+    const d = await f.getDoc(f.doc(f.fs, t, String(id)));
+    return d.exists() ? { ...d.data(), id: d.id } : null;
+  },
+  async insert(t, rows) {
+    const f = await firebase();
+    const now = new Date().toISOString();
     const out = [];
-    const page = 1000;
-    for (let from = 0; ; from += page) {
-      const rows = this.check(await c.from(t).select('*').range(from, from + page - 1));
-      out.push(...rows);
-      if (rows.length < page) break;
+    for (const r of rows) {
+      const { id, ...data } = r;
+      const row = { created_at: now, ...(t === 'sales' ? { created_by: f.auth.currentUser?.uid || null } : {}), ...data };
+      if (id !== undefined) {
+        await f.setDoc(f.doc(f.fs, t, String(id)), row);
+        out.push({ ...row, id: String(id) });
+      } else {
+        const ref = await f.addDoc(f.collection(f.fs, t), row);
+        out.push({ ...row, id: ref.id });
+      }
     }
     return out;
   },
-  async insert(t, rows) {
-    const c = await this.client();
-    return this.check(await c.from(t).insert(rows).select());
-  },
   async update(t, id, patch) {
-    const c = await this.client();
-    return this.check(await c.from(t).update(patch).eq('id', id).select().single());
+    const f = await firebase();
+    await f.updateDoc(f.doc(f.fs, t, String(id)), patch);
+    return this.getOne(t, id);
+  },
+  // Firestore no tiene llaves foráneas: limpiamos referencias a mano.
+  async unlink(t, field, id, { remove = false } = {}) {
+    const f = await firebase();
+    const snap = await f.getDocs(f.query(f.collection(f.fs, t), f.where(field, '==', id)));
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const batch = f.writeBatch(f.fs);
+      snap.docs.slice(i, i + 400).forEach((d) => (remove ? batch.delete(d.ref) : batch.update(d.ref, { [field]: null })));
+      await batch.commit();
+    }
   },
   async remove(t, id) {
-    const c = await this.client();
-    this.check(await c.from(t).delete().eq('id', id));
+    const f = await firebase();
+    await f.deleteDoc(f.doc(f.fs, t, String(id)));
+    if (t === 'sales') await this.unlink('sale_items', 'sale_id', id, { remove: true });
+    if (t === 'drops') await this.unlink('products', 'drop_id', id);
+    if (t === 'customers') await this.unlink('sales', 'customer_id', id);
+    if (t === 'products') {
+      await this.unlink('sale_items', 'product_id', id);
+      await this.unlink('production', 'product_id', id);
+    }
   },
+  // Suma/resta atómica: si dos personas venden al mismo tiempo, no se pierde nada.
   async adjustStock(productId, size, delta) {
-    const c = await this.client();
-    this.check(await c.rpc('adjust_stock', { p_product: productId, p_size: size, p_delta: delta }));
+    const f = await firebase();
+    try {
+      await f.updateDoc(f.doc(f.fs, 'products', productId), new f.FieldPath('stock', size), f.increment(delta));
+    } catch (e) {
+      if (e?.code !== 'not-found') throw e;
+    }
+  },
+  // Crea el perfil la primera vez que alguien entra. La primera cuenta es la del dueño.
+  async ensureProfile(user, name) {
+    const f = await firebase();
+    const ref = f.doc(f.fs, 'profiles', user.id);
+    const existing = await f.getDoc(ref);
+    if (existing.exists()) return { ...existing.data(), id: user.id };
+    const base = { email: user.email, name: name || user.name || user.email.split('@')[0], created_at: new Date().toISOString() };
+    const ownerRef = f.doc(f.fs, 'meta', 'owner');
+    const hasOwner = (await f.getDoc(ownerRef)).exists();
+    if (!hasOwner) {
+      try {
+        const batch = f.writeBatch(f.fs);
+        batch.set(ownerRef, { uid: user.id });
+        batch.set(ref, { ...base, role: 'owner' });
+        await batch.commit();
+        return { ...base, role: 'owner', id: user.id };
+      } catch {
+        /* alguien más ya es dueño: queda pendiente */
+      }
+    }
+    await f.setDoc(ref, { ...base, role: 'pending' });
+    return { ...base, role: 'pending', id: user.id };
   },
 };
 
@@ -178,21 +252,54 @@ export async function currentUser() {
   return db.session();
 }
 
+const authError = (e) => {
+  const map = {
+    'auth/invalid-credential': 'Correo o contraseña incorrectos',
+    'auth/wrong-password': 'Correo o contraseña incorrectos',
+    'auth/user-not-found': 'Correo o contraseña incorrectos',
+    'auth/invalid-email': 'Ese correo no es válido',
+    'auth/email-already-in-use': 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta".',
+    'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres',
+    'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos.',
+    'auth/network-request-failed': 'Sin conexión a internet',
+    'auth/operation-not-allowed': 'Activa "Correo/contraseña" en Firebase → Authentication',
+  };
+  return new Error(map[e?.code] || e?.message || 'Ocurrió un error');
+};
+
 export async function signIn(email, password) {
-  const c = await cloud.client();
-  cloud.check(await c.auth.signInWithPassword({ email, password }));
+  const f = await firebase();
+  try {
+    await f.signInWithEmailAndPassword(f.auth, email, password);
+  } catch (e) {
+    throw authError(e);
+  }
 }
 
 export async function signUp(email, password, name) {
-  const c = await cloud.client();
-  const data = cloud.check(await c.auth.signUp({ email, password, options: { data: { name } } }));
-  return { needsConfirm: !data.session };
+  const f = await firebase();
+  try {
+    const cred = await f.createUserWithEmailAndPassword(f.auth, email, password);
+    await f.updateProfile(cred.user, { displayName: name });
+    await cloud.ensureProfile({ id: cred.user.uid, email: cred.user.email, name }, name);
+  } catch (e) {
+    throw authError(e);
+  }
+}
+
+export async function sendReset(email) {
+  const f = await firebase();
+  try {
+    await f.sendPasswordResetEmail(f.auth, email);
+  } catch (e) {
+    throw authError(e);
+  }
 }
 
 export async function signOut() {
   if (CLOUD) {
-    const c = await cloud.client();
-    await c.auth.signOut();
+    const f = await firebase();
+    await f.signOut(f.auth);
   }
   location.hash = '';
   location.reload();
@@ -215,6 +322,8 @@ function applySettings() {
 }
 
 export async function refresh(tables = TABLES) {
+  // El equipo no tiene permiso de leer gastos.
+  tables = tables.filter((t) => t !== 'expenses' || isOwner());
   const results = await Promise.all(tables.map((t) => db.all(t)));
   tables.forEach((t, i) => {
     if (t === 'settings') state._settingsRow = results[i][0] || null;
@@ -226,10 +335,9 @@ export async function refresh(tables = TABLES) {
 
 export async function loadAll(user) {
   state.user = user;
-  await refresh(['profiles']);
-  state.profile = state.profiles.find((p) => p.id === user.id) || null;
+  state.profile = CLOUD ? await cloud.ensureProfile(user) : await local.getOne('profiles', 'demo');
   if (!state.profile || state.profile.role === 'pending') return false;
-  await refresh(TABLES.filter((t) => t !== 'profiles'));
+  await refresh(TABLES);
   return true;
 }
 

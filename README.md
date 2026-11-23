@@ -32,22 +32,24 @@ python3 -m http.server 8000
 # abre http://localhost:8000
 ```
 
-## 2. Conectar la nube (Supabase, gratis)
+## 2. Conectar la nube (Firebase, gratis)
 
-1. Crea una cuenta en [supabase.com](https://supabase.com) y un proyecto nuevo (región: *East US* o la más cercana).
-2. Ve a **SQL Editor → New query**, pega todo el contenido de [`supabase/schema.sql`](supabase/schema.sql) y dale a **Run**.
-3. Ve a **Project Settings → API** y copia **Project URL** y la **anon public key**.
-4. Pégalas en [`js/config.js`](js/config.js).
-5. Abre la app y toca **Crear cuenta**. **La primera cuenta que se registre será la del dueño** (tú). Hazlo antes que nadie.
-6. Tu equipo crea su cuenta desde la app. Entra como *Sin acceso* hasta que tú le asignes un rol en **Más → Ajustes → Equipo**.
+1. Entra a [console.firebase.google.com](https://console.firebase.google.com) → **Agregar proyecto** (ej. `trco-app`). Google Analytics no hace falta.
+2. **Authentication** → *Comenzar* → pestaña *Sign-in method* → activa **Correo electrónico/contraseña**.
+3. **Firestore Database** → *Crear base de datos* → ubicación `nam5 (us-central)` → *Modo de producción*.
+4. En Firestore → pestaña **Reglas**: borra lo que hay, pega todo [`firebase/firestore.rules`](firebase/firestore.rules) → **Publicar**.
+5. ⚙️ **Configuración del proyecto** → *General* → *Tus apps* → ícono web **`</>`** → registra la app (ej. "TRCO web", sin Hosting). Copia los valores de `firebaseConfig` en [`js/config.js`](js/config.js) (o pásaselos a Claude).
+6. **Authentication → Settings → Dominios autorizados** → agrega `wcuellar08.github.io`.
+7. Abre la app y toca **Crear cuenta**. **La primera cuenta que se registre será la del dueño** (tú). Hazlo antes que nadie.
+8. Tu equipo crea su cuenta desde la app y entra como *Sin acceso* hasta que tú le asignes un rol en **Más → Ajustes → Equipo**.
 
-> Opcional: en Supabase → *Authentication → Providers → Email* puedes desactivar "Confirm email" para no tener que confirmar el correo al registrarse.
+> El plan gratis de Firebase (Spark) aguanta de sobra: 50,000 lecturas y 20,000 escrituras al día.
 
 ## 3. Publicarla en internet (GitHub Pages)
 
 La app se publica desde la rama `main` con GitHub Pages:
 
-1. El repositorio debe ser **público** (Settings → General → Danger Zone → Change visibility). Tus datos de ventas NO están en el código; viven en Supabase o en el dispositivo.
+1. El repositorio debe ser **público** (Settings → General → Danger Zone → Change visibility). Tus datos de ventas NO están en el código; viven en Firebase o en el dispositivo.
 2. **Settings → Pages → Build and deployment**: *Source* = **Deploy from a branch**, *Branch* = **main** y carpeta **/ (root)** → **Save**.
 3. En 1-2 minutos queda en **https://wcuellar08.github.io/TRCO-APP-V1/**.
 
@@ -59,7 +61,7 @@ Cada cambio que se sube a `main` se publica solo en 1-2 minutos. En el iPhone, c
 2. Toca **Compartir** (cuadro con flecha ↑).
 3. **Agregar a pantalla de inicio** → **Agregar**.
 
-Se abre en pantalla completa con el ícono de TRCO y carga aunque no haya internet (en modo nube, para guardar datos sí necesitas conexión).
+Se abre en pantalla completa con el ícono de TRCO y carga aunque no haya internet (para guardar datos en la nube sí necesitas conexión).
 
 ---
 
@@ -77,15 +79,15 @@ index.html            Página principal
 manifest.webmanifest  Configuración de app instalable
 sw.js                 Funcionamiento sin conexión
 css/app.css           Estilos
-js/config.js          Claves de Supabase
-js/db.js              Datos (Supabase o modo demo) y lógica de inventario/ventas
+js/config.js          Claves de Firebase
+js/db.js              Datos (Firebase o modo demo) y lógica de inventario/ventas
 js/ui.js              Formatos, fechas, gráficas, ventanas
 js/views/*.js         Cada pantalla
 js/demo.js            Datos de ejemplo
-supabase/schema.sql   Tablas y reglas de seguridad
+firebase/firestore.rules  Reglas de seguridad de la base de datos
 ```
 
 ### Notas de seguridad
 
-- La *anon key* de Supabase es pública por diseño. Lo que protege los datos son las reglas (Row Level Security) de `schema.sql`: solo los usuarios aprobados ven o cambian información.
+- Las claves de `js/config.js` son públicas por diseño (van dentro de cualquier app web de Firebase). Lo que protege los datos son las reglas de `firebase/firestore.rules`: solo los usuarios aprobados ven o cambian información.
 - Los **gastos** están protegidos en la base de datos: solo el dueño puede leerlos. El **costo** de los productos se oculta al equipo en la app, pero técnicamente un usuario del equipo con conocimientos podría leerlo desde la base de datos.
