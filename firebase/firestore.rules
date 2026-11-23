@@ -2,61 +2,98 @@ rules_version = '2';
 
 // ════════════════════════════════════════════════════════════════
 //  TRCO APP · Reglas de seguridad de Firestore
-//  Pega TODO este archivo en Firebase Console → Firestore Database
-//  → pestaña "Reglas" → Publicar.
+//  Se publican solas con GitHub Actions (ver README), o a mano en
+//  Firebase Console → Firestore Database → Reglas → Publicar.
 //
 //  Roles (campo `role` en /profiles/{uid}):
-//    owner   = dueño: ve todo (costos, ganancias, gastos, equipo)
-//    staff   = equipo: inventario, ventas, clientes, producción, drops
-//    pending = cuenta nueva esperando aprobación (no ve nada)
+//    owner       = Dueño: puede todo y gestiona usuarios.
+//    colaborador = puede solo lo que el Dueño le activó en `permissions`.
+//  Los usuarios se crean SOLO desde las funciones (functions/index.js).
 // ════════════════════════════════════════════════════════════════
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    function profilePath() { return /databases/$(database)/documents/profiles/$(request.auth.uid); }
-    function role() {
-      return signedIn() && exists(profilePath()) ? get(profilePath()).data.role : 'none';
+    function me() { return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data; }
+    function hasProfile() {
+      return signedIn() && exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
     }
-    function isMember() { return role() in ['owner', 'staff']; }
-    function isOwner() { return role() == 'owner'; }
+    function isMember() { return hasProfile() && me().active == true; }
+    function isOwner() { return isMember() && me().role == 'owner'; }
+    function can(p) {
+      return isMember() && (me().role == 'owner' || (me().role == 'colaborador' && me().permissions[p] == true));
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
 
-    // Marca quién es el dueño. Solo se puede crear una vez (la primera cuenta).
+    // Solo indica si ya existe el Dueño (para mostrar la pantalla de primera vez).
     match /meta/owner {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
+      allow get: if true;
+      allow list, write: if false;
     }
 
     match /profiles/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || isMember());
-      // Al registrarse: queda "pending", salvo la primera cuenta, que es el dueño.
-      allow create: if signedIn() && uid == request.auth.uid && (
-        request.resource.data.role == 'pending' ||
-        (request.resource.data.role == 'owner'
-          && !exists(/databases/$(database)/documents/meta/owner)
-          && getAfter(/databases/$(database)/documents/meta/owner).data.uid == request.auth.uid)
-      );
-      allow update: if isOwner();
-      allow delete: if isOwner() && uid != request.auth.uid;
+      // Cada quien solo puede marcar que ya cambió su contraseña temporal.
+      allow update: if signedIn() && uid == request.auth.uid
+        && onlyChanges(['must_change_password'])
+        && request.resource.data.must_change_password == false;
+      allow create, delete: if false;
     }
 
-    // Catálogos (tipos, tallas, canales…): todos leen, solo el dueño cambia.
+    // Catálogos (tipos, tallas, canales…): todos leen, solo el Dueño cambia.
     match /settings/{id} {
       allow read: if isMember();
       allow write: if isOwner();
     }
 
-    // Operación diaria: dueño y equipo.
-    match /products/{id}   { allow read, write: if isMember(); }
-    match /sales/{id}      { allow read, write: if isMember(); }
-    match /sale_items/{id} { allow read, write: if isMember(); }
-    match /customers/{id}  { allow read, write: if isMember(); }
-    match /production/{id} { allow read, write: if isMember(); }
-    match /drops/{id}      { allow read, write: if isMember(); }
+    // Productos: inventario completo con permiso "inventario". Vender o recibir
+    // producción solo puede mover el stock.
+    match /products/{id} {
+      allow read: if isMember();
+      allow create, delete: if can('inventario');
+      allow update: if can('inventario')
+        || ((can('vender') || can('borrar_ventas') || can('produccion')) && onlyChanges(['stock']));
+    }
 
-    // Gastos: SOLO el dueño.
-    match /expenses/{id}   { allow read, write: if isOwner(); }
+    match /drops/{id} {
+      allow read: if isMember();
+      allow write: if can('inventario');
+    }
+
+    // Ventas: registrar, actualizar (estado/pagos), cancelar/eliminar.
+    match /sales/{id} {
+      allow read: if isMember();
+      allow create: if can('vender');
+      allow update: if (can('editar_ventas') && request.resource.data.status != 'cancelado' && resource.data.status != 'cancelado')
+        || can('borrar_ventas')
+        || (can('clientes') && onlyChanges(['customer_id']));
+      allow delete: if can('borrar_ventas');
+    }
+
+    match /sale_items/{id} {
+      allow read: if isMember();
+      allow create: if can('vender');
+      allow update: if can('inventario') && onlyChanges(['product_id']);
+      allow delete: if can('borrar_ventas');
+    }
+
+    match /customers/{id} {
+      allow read: if isMember();
+      allow create: if can('vender') || can('clientes');
+      allow update, delete: if can('clientes');
+    }
+
+    match /production/{id} {
+      allow read: if isMember();
+      allow create, delete: if can('produccion');
+      allow update: if can('produccion') || (can('inventario') && onlyChanges(['product_id']));
+    }
+
+    match /expenses/{id} {
+      allow read, write: if can('gastos');
+    }
   }
 }

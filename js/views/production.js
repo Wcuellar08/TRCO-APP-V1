@@ -1,9 +1,9 @@
-import { state, isOwner, saveRow, deleteRow, receiveProduction, productById, batchQty, unitCostOf, PROD_STATUS, sizesOf } from '../db.js';
+import { state, can, saveRow, deleteRow, receiveProduction, productById, batchQty, unitCostOf, PROD_STATUS, sizesOf } from '../db.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 
 export function render(page) {
-  const owner = isOwner();
+  const owner = can('costos');
   const open = state.production.filter((b) => b.status !== 'recibido');
   const done = state.production.filter((b) => b.status === 'recibido');
   const row = (b) => {
@@ -23,12 +23,13 @@ export function render(page) {
       <div class="kpi"><div class="k">En producción</div><div class="v">${int(sumBy(open, batchQty))}</div><div class="s">${open.length} lotes</div></div>
       ${owner ? `<div class="kpi"><div class="k">Invertido</div><div class="v">${Q(sumBy(open, (b) => b.total_cost))}</div><div class="s">en lotes pendientes</div></div>` : ''}
     </div>
-    <div class="btn-row"><button class="btn primary" id="new">+ Nuevo lote</button></div>
+    ${can('produccion') ? '<div class="btn-row"><button class="btn primary" id="new">+ Nuevo lote</button></div>' : ''}
     <div class="section"><h2>Pendientes</h2></div>
     ${open.length ? `<div class="list">${open.map(row).join('')}</div>` : '<div class="card muted small">No hay producción pendiente.</div>'}
     <div class="section"><h2>Recibidos</h2></div>
     ${done.length ? `<div class="list">${done.slice(0, 30).map(row).join('')}</div>` : emptyState('Aún no hay lotes recibidos.')}`;
-  $('#new', page).onclick = () => openBatch();
+  const nb = $('#new', page);
+  if (nb) nb.onclick = () => openBatch();
   $$('.row[data-id]', page).forEach((b) => (b.onclick = () => openBatch(b.dataset.id)));
 }
 
@@ -37,7 +38,8 @@ export function openBatch(id) {
     toast('Primero crea el producto en Inventario');
     return bus.go('inventario');
   }
-  const owner = isOwner();
+  const owner = can('costos');
+  const editable = can('produccion');
   const b = state.production.find((x) => x.id === id) || { quantities: {}, ordered_date: today(), status: 'en_produccion' };
   const received = b.status === 'recibido';
   const sizesFor = (pid) => {
@@ -49,7 +51,7 @@ export function openBatch(id) {
     title: id ? 'Lote de producción' : 'Nuevo lote',
     body: `
       ${received ? '<div class="alert info" style="margin-bottom:12px">Este lote ya se recibió y se sumó al inventario.</div>' : ''}
-      <form class="form" id="bf">
+      <form class="form" id="bf"><fieldset class="readonly form" ${editable ? '' : 'disabled'}>
         <label class="field"><span>Producto</span><select name="product_id" required ${received ? 'disabled' : ''}>${options(
           state.products.map((p) => ({ value: p.id, label: p.name + (p.color ? ' · ' + p.color : '') })),
           b.product_id,
@@ -64,10 +66,10 @@ export function openBatch(id) {
           <label class="field"><span>Fecha de entrega</span><input type="date" name="expected_date" value="${esc(b.expected_date || '')}"></label>
         </div>
         <label class="field"><span>Notas</span><textarea name="notes">${esc(b.notes)}</textarea></label>
-        <button class="btn primary block" type="submit">Guardar</button>
+        ${editable ? `<button class="btn primary block" type="submit">Guardar</button>
         ${id && !received ? '<button class="btn block" type="button" id="receive">✓ Marcar como recibido</button>' : ''}
-        ${id ? '<button class="btn danger block" type="button" id="del">Eliminar lote</button>' : ''}
-      </form>`,
+        ${id ? '<button class="btn danger block" type="button" id="del">Eliminar lote</button>' : ''}` : '<p class="muted small">Solo lectura. Para gestionar producción necesitas el permiso "Producción".</p>'}
+      </fieldset></form>`,
     onMount(root, close) {
       const f = $('#bf', root);
       const drawGrid = () => {
@@ -128,7 +130,7 @@ export function openBatch(id) {
           const p = productById(b.product_id);
           if (!(await confirmAction(`¿Recibiste ${batchQty(b)} prendas de "${p?.name}"? Se sumarán al inventario.`, { ok: 'Sí, recibido' }))) return;
           let updateCost = false;
-          if (owner && Number(b.total_cost) > 0 && p && Number(p.cost) !== unitCostOf(b)) {
+          if (owner && can('inventario') && Number(b.total_cost) > 0 && p && Number(p.cost) !== unitCostOf(b)) {
             updateCost = await confirmAction(`¿Actualizar el costo por prenda de "${p.name}" a ${Q(unitCostOf(b))}? (Ahora es ${Q(p.cost)})`, { ok: 'Actualizar' });
           }
           try {

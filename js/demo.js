@@ -146,7 +146,7 @@ export function buildDemoData() {
 
   return {
     settings: [{ id: 1, data: { ...DEFAULT_SETTINGS } }],
-    profiles: [{ id: 'demo', email: 'demo@trco', name: 'Dueño (demo)', role: 'owner' }],
+    profiles: [{ id: 'demo', username: 'demo', name: 'Dueño (demo)', role: 'owner', active: true }],
     drops,
     products,
     customers,

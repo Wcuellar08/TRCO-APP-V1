@@ -1,4 +1,4 @@
-import { state, saveRow, deleteRow, saleBalance } from '../db.js';
+import { state, can, saveRow, deleteRow, saleBalance } from '../db.js';
 import { $, $$, esc, Q, int, fmtDate, sheet, toast, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 import { saleRow, bindSaleRows, openNewSale } from './sales.js';
@@ -82,7 +82,7 @@ export function openCustomer(id) {
       <div class="btn-row" style="margin:0 0 14px">
         ${ig ? `<a class="btn sm" href="https://instagram.com/${encodeURIComponent(ig)}" target="_blank" rel="noopener">Instagram</a>` : ''}
         ${phone ? `<a class="btn sm" href="https://wa.me/${phone.length === 8 ? '502' + phone : phone}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
-        <button class="btn sm primary" id="sell" type="button">+ Venta</button>
+        ${can('vender') ? '<button class="btn sm primary" id="sell" type="button">+ Venta</button>' : ''}
       </div>` : ''}
       <form class="form" id="cf">
         <label class="field"><span>Nombre</span><input name="name" required value="${esc(c.name)}"></label>

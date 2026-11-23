@@ -1,5 +1,5 @@
 import {
-  state, isOwner, createSale, updateSale, deleteSale, saveRow, SALE_STATUS, itemsOf, customerById,
+  state, can, createSale, updateSale, deleteSale, saveRow, SALE_STATUS, itemsOf, customerById,
   productById, profileName, saleBalance, isPending, sizesOf, stockTotal,
 } from '../db.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, fmtDateLong, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
@@ -68,7 +68,7 @@ export function render(page) {
   const counts = Object.fromEntries(Object.entries(FILTERS).map(([k, f]) => [k, state.sales.filter(f.fn).length]));
 
   page.innerHTML = `
-    <div class="btn-row" style="margin-top:0"><button class="btn primary" id="new-sale">+ Nueva venta</button></div>
+    ${can('vender') ? '<div class="btn-row" style="margin-top:0"><button class="btn primary" id="new-sale">+ Nueva venta</button></div>' : ''}
     <div class="chips" style="margin:14px -16px 10px">
       ${Object.entries(FILTERS)
         .map(([k, f]) => `<button class="chip ${filter === k ? 'active' : ''}" data-f="${k}">${f.label}${k !== 'todas' && counts[k] ? ` · ${counts[k]}` : ''}</button>`)
@@ -88,7 +88,8 @@ export function render(page) {
     }
     ${all.length > limit ? `<div class="btn-row"><button class="btn" id="more">Ver más (${all.length - limit})</button></div>` : ''}`;
 
-  $('#new-sale', page).onclick = () => openNewSale();
+  const ns = $('#new-sale', page);
+  if (ns) ns.onclick = () => openNewSale();
   $$('[data-f]', page).forEach((b) => (b.onclick = () => ((filter = b.dataset.f), (limit = 60), render(page))));
   const qi = $('#q', page);
   qi.oninput = () => {
@@ -105,6 +106,7 @@ export function render(page) {
 
 // ───────────────────────── Nueva venta ─────────────────────────
 export function openNewSale({ customerId } = {}) {
+  if (!can('vender')) return toast('No tienes permiso para registrar ventas', 'error');
   if (!state.products.some((p) => p.active !== false)) {
     toast('Primero agrega productos al inventario');
     bus.go('inventario');
@@ -321,7 +323,9 @@ export function openSale(id) {
   if (!s) return;
   const items = itemsOf(id);
   const c = customerById(s.customer_id);
-  const owner = isOwner();
+  const owner = can('costos');
+  const canEdit = can('editar_ventas') && s.status !== 'cancelado';
+  const canDelete = can('borrar_ventas');
   const bal = saleBalance(s);
   const cost = sumBy(items, (i) => i.qty * (Number(i.unit_cost) || 0));
   const revenue = (Number(s.subtotal) || 0) - (Number(s.discount) || 0);
@@ -353,7 +357,7 @@ export function openSale(id) {
       </div>
 
       <div class="form" style="margin-top:16px">
-        ${bal > 0 && s.status !== 'cancelado' ? `
+        ${bal > 0 && canEdit ? `
         <div class="card">
           <div class="label" style="margin-bottom:8px">Registrar pago</div>
           <div class="grid2" style="align-items:end">
@@ -361,14 +365,19 @@ export function openSale(id) {
             <button class="btn primary" id="pay" type="button">Registrar</button>
           </div>
         </div>` : ''}
+        ${canEdit || canDelete ? `
         <label class="field"><span>Estado</span><select id="status">${options(
-          Object.entries(SALE_STATUS).map(([value, v]) => ({ value, label: v.label })),
+          Object.entries(SALE_STATUS)
+            .filter(([k]) => canDelete || k !== 'cancelado')
+            .map(([value, v]) => ({ value, label: v.label })),
           s.status
-        )}</select><span class="hint">Cancelar una venta regresa las prendas al inventario.</span></label>
+        )}</select>${canDelete ? '<span class="hint">Cancelar una venta regresa las prendas al inventario.</span>' : ''}</label>
         <label class="field"><span>Guía / número de envío</span><input id="tracking" value="${esc(s.tracking)}" placeholder="Opcional"></label>
         <label class="field"><span>Notas</span><textarea id="notes">${esc(s.notes)}</textarea></label>
-        <button class="btn primary block" id="save" type="button">Guardar cambios</button>
-        <button class="btn danger block" id="del" type="button">Eliminar venta</button>
+        <button class="btn primary block" id="save" type="button">Guardar cambios</button>` : `
+        ${s.tracking ? `<div class="kv"><span>Guía</span><span>${esc(s.tracking)}</span></div>` : ''}
+        ${s.notes ? `<div class="card small">${esc(s.notes)}</div>` : ''}`}
+        ${canDelete ? '<button class="btn danger block" id="del" type="button">Eliminar venta</button>' : ''}
       </div>`,
     onMount(root, close) {
       const done = (msg) => {
@@ -388,7 +397,8 @@ export function openSale(id) {
             toast(e.message, 'error');
           }
         };
-      $('#save', root).onclick = async () => {
+      const save = $('#save', root);
+      if (save) save.onclick = async () => {
         const status = $('#status', root).value;
         if (status === 'cancelado' && s.status !== 'cancelado' && !(await confirmAction('¿Cancelar esta venta? Las prendas regresan al inventario.', { ok: 'Cancelar venta', danger: true }))) return;
         try {
@@ -398,7 +408,8 @@ export function openSale(id) {
           toast(e.message, 'error');
         }
       };
-      $('#del', root).onclick = async () => {
+      const del = $('#del', root);
+      if (del) del.onclick = async () => {
         if (!(await confirmAction('¿Eliminar esta venta para siempre? Las prendas regresan al inventario.', { ok: 'Eliminar', danger: true }))) return;
         try {
           await deleteSale(id);

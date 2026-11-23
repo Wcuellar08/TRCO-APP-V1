@@ -1,7 +1,8 @@
 import {
-  state, CLOUD, isOwner, saveSettings, saveRow, signOut, exportData, demoReplace, demoReset, refresh,
+  state, CLOUD, isOwner, can, saveSettings, signOut, exportData, demoReplace, demoReset, refresh,
 } from '../db.js';
-import { $, $$, esc, toast, confirmAction, downloadFile, toCSV, options, today } from '../ui.js';
+import { $, esc, toast, confirmAction, downloadFile, toCSV, today } from '../ui.js';
+import { ROLE_LABEL } from '../permissions.js';
 import { bus } from '../bus.js';
 import { buildDemoData } from '../demo.js';
 
@@ -13,42 +14,21 @@ const LISTS = [
   ['expense_categories', 'Categorías de gastos', 'Publicidad, Envíos…'],
 ];
 
-const ROLES = [
-  { value: 'owner', label: 'Dueño (ve todo)' },
-  { value: 'staff', label: 'Equipo (sin costos ni gastos)' },
-  { value: 'pending', label: 'Sin acceso' },
-];
-
-let teamFetched = 0;
-
 export function render(page) {
   const owner = isOwner();
-  // Trae al equipo actualizado (alguien pudo crear su cuenta hace poco).
-  if (CLOUD && owner && Date.now() - teamFetched > 5000) {
-    teamFetched = Date.now();
-    refresh(['profiles']).then(() => location.hash === '#ajustes' && render(page)).catch(() => {});
-  }
+  const exportOk = can('exportar');
   const me = state.profile;
   page.innerHTML = `
     <div class="section" style="margin-top:0"><h2>Mi cuenta</h2></div>
     <div class="card">
       <div class="kv"><span>Nombre</span><span>${esc(me?.name)}</span></div>
-      ${CLOUD ? `<div class="kv"><span>Correo</span><span>${esc(me?.email || state.user?.email)}</span></div>` : ''}
-      <div class="kv"><span>Rol</span><span>${owner ? 'Dueño' : 'Equipo'}</span></div>
+      ${CLOUD ? `<div class="kv"><span>Usuario</span><span>@${esc(me?.username)}</span></div>` : ''}
+      <div class="kv"><span>Rol</span><span>${ROLE_LABEL[me?.role] || ''}</span></div>
       <div class="kv"><span>Datos</span><span>${CLOUD ? 'En la nube (Firebase)' : 'Solo este dispositivo (demo)'}</span></div>
     </div>
 
-    ${CLOUD && owner ? `
-    <div class="section"><h2>Equipo</h2></div>
-    <div class="card">
-      <p class="muted small" style="margin-top:0">Pide a tu equipo que abra la app y toque “Crear cuenta”. Aparecerán aquí como “Sin acceso” hasta que les asignes un rol.</p>
-      ${state.profiles
-        .map(
-          (p) => `<div class="kv" style="align-items:center"><span>${esc(p.name)}<br><span class="small">${esc(p.email)}</span></span>
-          <span>${p.id === me.id ? 'Tú (dueño)' : `<select data-role="${p.id}" style="min-height:38px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);padding:4px 8px">${options(ROLES, p.role)}</select>`}</span></div>`
-        )
-        .join('')}
-    </div>` : ''}
+    ${owner ? '<div class="btn-row"><a class="btn" href="#usuarios">Gestionar usuarios y permisos</a></div>' : ''}
+    ${CLOUD && !owner ? '<p class="muted small">¿Necesitas cambiar tu contraseña? Pídeselo al Dueño.</p>' : ''}
 
     ${owner ? `
     <div class="section"><h2>Catálogos</h2></div>
@@ -61,14 +41,15 @@ export function render(page) {
       <button class="btn primary block" type="submit">Guardar catálogos</button>
     </form>` : ''}
 
+    ${exportOk || !CLOUD ? `
     <div class="section"><h2>Respaldo y Excel</h2></div>
     <div class="card form">
       <button class="btn block" id="csv-inv">Descargar inventario (CSV)</button>
-      <button class="btn block" id="csv-cli">Descargar clientes (CSV)</button>
+      ${can('clientes') ? '<button class="btn block" id="csv-cli">Descargar clientes (CSV)</button>' : ''}
       ${owner ? '<button class="btn block" id="backup">Descargar respaldo completo (JSON)</button>' : ''}
       ${!CLOUD ? `<label class="btn block" style="position:relative">Restaurar respaldo (JSON)<input type="file" id="restore" accept="application/json,.json" style="position:absolute;inset:0;opacity:0"></label>` : ''}
       <span class="hint muted small">Los CSV se abren en Excel, Numbers o Google Sheets.</span>
-    </div>
+    </div>` : ''}
 
     ${!CLOUD ? `
     <div class="section"><h2>Modo demo</h2></div>
@@ -89,17 +70,6 @@ export function render(page) {
     ${CLOUD ? '<div class="btn-row"><button class="btn danger" id="logout">Cerrar sesión</button></div>' : ''}
   `;
 
-  $$('[data-role]', page).forEach(
-    (sel) =>
-      (sel.onchange = async () => {
-        try {
-          await saveRow('profiles', { id: sel.dataset.role, role: sel.value });
-          toast('Rol actualizado');
-        } catch (e) {
-          toast(e.message, 'error');
-        }
-      })
-  );
 
   const lists = $('#lists', page);
   if (lists)
@@ -119,20 +89,22 @@ export function render(page) {
       }
     };
 
-  $('#csv-inv', page).onclick = () => {
+  const csvInv = $('#csv-inv', page);
+  if (csvInv) csvInv.onclick = () => {
     const sizes = state.settings.sizes;
     const cols = [
       { label: 'Producto', get: (p) => p.name },
       { label: 'Tipo', get: (p) => p.type },
       { label: 'Color', get: (p) => p.color },
       { label: 'Precio', get: (p) => p.price },
-      ...(owner ? [{ label: 'Costo', get: (p) => p.cost }] : []),
+      ...(can('costos') ? [{ label: 'Costo', get: (p) => p.cost }] : []),
       ...sizes.map((s) => ({ label: s, get: (p) => p.stock?.[s] ?? '' })),
       { label: 'Activo', get: (p) => (p.active === false ? 'No' : 'Sí') },
     ];
     downloadFile(`TRCO-inventario-${today()}.csv`, toCSV(state.products, cols), 'text/csv;charset=utf-8');
   };
-  $('#csv-cli', page).onclick = () => {
+  const csvCli = $('#csv-cli', page);
+  if (csvCli) csvCli.onclick = () => {
     const cols = [
       { label: 'Nombre', get: (c) => c.name },
       { label: 'Instagram', get: (c) => c.instagram },

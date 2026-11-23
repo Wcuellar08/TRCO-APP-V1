@@ -1,4 +1,6 @@
-import { CLOUD, state, currentUser, loadAll, signIn, signUp, signOut, sendReset, demoReplace, refresh } from './db.js';
+import {
+  CLOUD, state, currentUser, loadAll, signIn, signOut, ownerExists, createOwner, changeMyPassword, demoReplace, refresh, can, isOwner,
+} from './db.js';
 import { buildDemoData } from './demo.js';
 import { $, esc, toast } from './ui.js';
 import { icons } from './icons.js';
@@ -13,17 +15,19 @@ import * as expenses from './views/expenses.js';
 import * as drops from './views/drops.js';
 import * as settings from './views/settings.js';
 import * as more from './views/more.js';
+import * as usersView from './views/users.js';
 
 const routes = {
   inicio: { view: dashboard, title: 'Inicio', tab: 'inicio' },
   inventario: { view: inventory, title: 'Inventario', tab: 'inventario' },
   ventas: { view: sales, title: 'Ventas', tab: 'ventas' },
   mas: { view: more, title: 'Más', tab: 'mas' },
-  reportes: { view: reports, title: 'Reportes', tab: 'mas', back: 'mas' },
-  clientes: { view: customers, title: 'Clientes', tab: 'mas', back: 'mas' },
+  reportes: { view: reports, title: 'Reportes', tab: 'mas', back: 'mas', perm: 'reportes' },
+  clientes: { view: customers, title: 'Clientes', tab: 'mas', back: 'mas', perm: 'clientes' },
   produccion: { view: production, title: 'Producción', tab: 'mas', back: 'mas' },
-  gastos: { view: expenses, title: 'Gastos', tab: 'mas', back: 'mas', owner: true },
+  gastos: { view: expenses, title: 'Gastos', tab: 'mas', back: 'mas', perm: 'gastos' },
   drops: { view: drops, title: 'Drops', tab: 'mas', back: 'mas' },
+  usuarios: { view: usersView, title: 'Usuarios', tab: 'mas', back: 'mas', owner: true },
   ajustes: { view: settings, title: 'Ajustes', tab: 'mas', back: 'mas' },
 };
 
@@ -47,11 +51,11 @@ function shell() {
     <nav class="tabbar" aria-label="Navegación">
       <a class="tab" data-tab="inicio" href="#inicio">${icons.home}<span>Inicio</span></a>
       <a class="tab" data-tab="inventario" href="#inventario">${icons.shirt}<span>Inventario</span></a>
-      <a class="tab tab-sell" id="tab-sell" href="#" aria-label="Nueva venta"><span class="plus">${icons.plus}</span></a>
+      ${can('vender') ? `<a class="tab tab-sell" id="tab-sell" href="#" aria-label="Nueva venta"><span class="plus">${icons.plus}</span></a>` : '<span></span>'}
       <a class="tab" data-tab="ventas" href="#ventas">${icons.receipt}<span>Ventas</span></a>
       <a class="tab" data-tab="mas" href="#mas">${icons.grid}<span>Más</span></a>
     </nav>`;
-  $('#tab-sell').addEventListener('click', (e) => {
+  $('#tab-sell')?.addEventListener('click', (e) => {
     e.preventDefault();
     sales.openNewSale();
   });
@@ -60,7 +64,7 @@ function shell() {
 let lastRoute = '';
 function render() {
   const r = currentRoute();
-  if (r.owner && state.profile?.role !== 'owner') {
+  if ((r.owner && !isOwner()) || (r.perm && !can(r.perm))) {
     location.hash = '#inicio';
     return;
   }
@@ -84,68 +88,87 @@ function render() {
 bus.rerender = render;
 
 // ───────────── Pantallas de acceso ─────────────
-function authScreen(mode = 'login', msg = '') {
-  app.innerHTML = `
-    <div class="auth"><div class="auth-box">
-      <div class="logo">TRCO<span>.</span></div>
-      <p>${mode === 'login' ? 'Entra para controlar tu negocio.' : 'Crea tu cuenta. La primera cuenta será la del dueño.'}</p>
-      ${msg ? `<div class="alert info" style="margin-bottom:16px">${esc(msg)}</div>` : ''}
-      <form class="form" id="auth-form">
-        ${mode === 'signup' ? '<label class="field"><span>Nombre</span><input name="name" required autocomplete="name"></label>' : ''}
-        <label class="field"><span>Correo</span><input name="email" type="email" required autocomplete="email" inputmode="email"></label>
-        <label class="field"><span>Contraseña</span><input name="password" type="password" required minlength="6" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}"></label>
-        <button class="btn primary block" type="submit">${mode === 'login' ? 'Entrar' : 'Crear cuenta'}</button>
-      </form>
-      <p style="margin-top:18px;text-align:center">
-        <button class="btn-text" id="auth-toggle">${mode === 'login' ? '¿No tienes cuenta? Crear una' : 'Ya tengo cuenta'}</button>
-        ${mode === 'login' ? '<br><button class="btn-text" id="forgot" style="color:var(--text-2)">Olvidé mi contraseña</button>' : ''}
-      </p>
-    </div></div>`;
-  $('#auth-toggle').onclick = () => authScreen(mode === 'login' ? 'signup' : 'login');
-  $('#auth-form').onsubmit = async (e) => {
+function authFrame(inner) {
+  app.innerHTML = `<div class="auth"><div class="auth-box"><div class="logo">TRCO<span>.</span></div>${inner}</div></div>`;
+}
+
+function bindForm(onSubmit) {
+  const form = $('#auth-form');
+  form.onsubmit = async (e) => {
     e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.target));
-    const btn = e.target.querySelector('button');
+    const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     try {
-      if (mode === 'login') {
-        await signIn(f.email.trim(), f.password);
-        await boot();
-      } else {
-        await signUp(f.email.trim(), f.password, f.name.trim());
-        await boot();
-      }
+      await onSubmit(Object.fromEntries(new FormData(form)));
     } catch (err) {
       btn.disabled = false;
       toast(err.message, 'error');
     }
   };
-  const forgot = $('#forgot');
-  if (forgot)
-    forgot.onclick = async () => {
-      const email = $('#auth-form').email.value.trim();
-      if (!email) return toast('Escribe tu correo primero', 'error');
-      try {
-        await sendReset(email);
-        authScreen('login', `Te enviamos un correo a ${email} para cambiar tu contraseña.`);
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    };
 }
 
+const passwordFields = `
+  <label class="field"><span>Contraseña nueva</span><input name="password" id="new-password" type="password" required minlength="6" autocomplete="new-password"></label>
+  <label class="field"><span>Repite la contraseña</span><input name="password2" id="new-password2" type="password" required minlength="6" autocomplete="new-password">
+    <span class="hint">Mínimo 6 caracteres.</span></label>`;
 
-function pendingScreen() {
-  app.innerHTML = `
-    <div class="auth"><div class="auth-box">
-      <div class="logo">TRCO<span>.</span></div>
-      <p>Hola ${esc(state.profile?.name || '')}. Tu cuenta está <b>pendiente de aprobación</b>. Pídele al dueño que te active desde <i>Más → Ajustes → Equipo</i>.</p>
-      <div class="btn-row">
-        <button class="btn" id="retry">Revisar de nuevo</button>
-        <button class="btn" id="logout">Salir</button>
-      </div>
-    </div></div>`;
-  $('#retry').onclick = boot;
+function checkPasswords(f) {
+  if (f.password !== f.password2) throw new Error('Las contraseñas no coinciden');
+  if (f.password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
+}
+
+function loginScreen(msg = '') {
+  authFrame(`
+    <p>Entra con el usuario que te dio el Dueño.</p>
+    ${msg ? `<div class="alert info" style="margin-bottom:16px">${esc(msg)}</div>` : ''}
+    <form class="form" id="auth-form">
+      <label class="field"><span>Usuario</span><input name="username" id="login-user" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+      <label class="field"><span>Contraseña</span><input name="password" id="login-password" type="password" required autocomplete="current-password"></label>
+      <button class="btn primary block" type="submit">Entrar</button>
+    </form>
+    <p class="muted small" style="margin-top:18px;text-align:center">¿Olvidaste tu contraseña? Pídele al Dueño que te asigne una nueva.</p>`);
+  bindForm(async (f) => {
+    await signIn(f.username, f.password);
+    await boot();
+  });
+}
+
+function setupOwnerScreen() {
+  authFrame(`
+    <p><b>Bienvenido.</b> Crea la cuenta del Dueño. Después, desde <i>Más → Usuarios</i>, das de alta a tu equipo.</p>
+    <form class="form" id="auth-form">
+      <label class="field"><span>Tu nombre</span><input name="name" id="setup-name" required autocomplete="name"></label>
+      <label class="field"><span>Usuario</span><input name="username" id="setup-user" required autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="ej. will">
+        <span class="hint">Con lo que vas a entrar. Sin espacios ni acentos.</span></label>
+      ${passwordFields}
+      <button class="btn primary block" type="submit">Crear cuenta de Dueño</button>
+    </form>`);
+  bindForm(async (f) => {
+    checkPasswords(f);
+    await createOwner({ username: f.username, name: f.name.trim(), password: f.password });
+    await boot();
+  });
+}
+
+function changePasswordScreen() {
+  authFrame(`
+    <p>Hola <b>${esc(state.profile?.name || '')}</b>. Antes de empezar, crea tu propia contraseña. Solo tú la sabrás.</p>
+    <form class="form" id="auth-form">
+      ${passwordFields}
+      <button class="btn primary block" type="submit">Guardar y entrar</button>
+    </form>
+    <p style="text-align:center;margin-top:14px"><button class="btn-text" id="logout">Salir</button></p>`);
+  $('#logout').onclick = signOut;
+  bindForm(async (f) => {
+    checkPasswords(f);
+    await changeMyPassword(f.password);
+    toast('Contraseña guardada');
+    await boot();
+  });
+}
+
+function blockedScreen(text) {
+  authFrame(`<p>${text}</p><div class="btn-row"><button class="btn" id="logout">Salir</button></div>`);
   $('#logout').onclick = signOut;
 }
 
@@ -163,9 +186,11 @@ async function maybeAutoSeed() {
 async function boot() {
   try {
     const user = await currentUser();
-    if (!user) return authScreen();
-    const ok = await loadAll(user);
-    if (!ok) return pendingScreen();
+    if (!user) return (await ownerExists()) ? loginScreen() : setupOwnerScreen();
+    const status = await loadAll(user);
+    if (status === 'cambiar_clave') return changePasswordScreen();
+    if (status === 'inactivo') return blockedScreen('Tu usuario está desactivado. Habla con el Dueño.');
+    if (status === 'sin_perfil') return blockedScreen('Tu usuario ya no existe. Habla con el Dueño.');
     await maybeAutoSeed();
     shell();
     render();
@@ -187,7 +212,12 @@ async function syncIfStale(force = false) {
   lastSync = Date.now();
   try {
     await refresh();
-    if (!document.querySelector('.sheet-wrap')) render();
+    // Si el Dueño me desactivó o me asignó otra contraseña, salgo.
+    if (state.profile?.active === false || state.profile?.must_change_password) return boot();
+    if (!document.querySelector('.sheet-wrap')) {
+      shell();
+      render();
+    }
   } catch (e) {
     console.warn('No se pudo actualizar', e);
   }

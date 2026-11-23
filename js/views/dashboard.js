@@ -1,4 +1,4 @@
-import { state, isOwner, soldLines, lowStock, isPending, saleBalance, productById, batchQty, CLOUD } from '../db.js';
+import { state, can, soldLines, lowStock, isPending, saleBalance, productById, batchQty, CLOUD } from '../db.js';
 import { $, $$, esc, Q, int, today, startOfMonth, startOfWeek, addDays, fmtDate, sumBy, groupSum, barList, pct } from '../ui.js';
 import { saleRow, bindSaleRows, openNewSale, setFilter } from './sales.js';
 import { openProduct } from './inventory.js';
@@ -11,7 +11,8 @@ function periodStats(from, to) {
 }
 
 export function render(page) {
-  const owner = isOwner();
+  const seeCosts = can('costos');
+  const seeExpenses = can('gastos');
   const t = today();
   const day = periodStats(t, t);
   const week = periodStats(startOfWeek(t), t);
@@ -53,15 +54,17 @@ export function render(page) {
       </div>
       <div class="kpi"><div class="k">Hoy</div><div class="v">${Q(day.revenue)}</div><div class="s">${int(day.units)} prendas</div></div>
       <div class="kpi"><div class="k">Esta semana</div><div class="v">${Q(week.revenue)}</div><div class="s">${int(week.units)} prendas</div></div>
-      ${owner ? `
-      <div class="kpi"><div class="k">Ganancia neta (mes)</div><div class="v ${net < 0 ? 'neg' : ''}">${Q(net)}</div><div class="s">después de costos y gastos</div></div>
+      ${seeCosts ? (seeExpenses
+        ? `<div class="kpi"><div class="k">Ganancia neta (mes)</div><div class="v ${net < 0 ? 'neg' : ''}">${Q(net)}</div><div class="s">después de costos y gastos</div></div>`
+        : `<div class="kpi"><div class="k">Ganancia bruta (mes)</div><div class="v">${Q(month.revenue - month.cost)}</div><div class="s">ventas menos costo de prendas</div></div>`) : ''}
+      ${can('editar_ventas') || can('vender') ? `
       <div class="kpi"><div class="k">Por cobrar</div><div class="v">${Q(owed)}</div><div class="s">${pending.filter((s) => saleBalance(s) > 0.009).length} ventas con saldo</div></div>` : ''}
     </div>
 
-    <div class="quick">
-      <button class="btn primary" id="q-sale">+ Venta</button>
-      <a class="btn" href="#reportes">Ver reportes</a>
-    </div>
+    ${can('vender') || can('reportes') ? `<div class="quick">
+      ${can('vender') ? '<button class="btn primary" id="q-sale">+ Venta</button>' : ''}
+      ${can('reportes') ? '<a class="btn" href="#reportes">Ver reportes</a>' : ''}
+    </div>` : ''}
 
     ${pending.length ? `
     <div class="section"><h2>Pendientes (${pending.length})</h2><a href="#ventas" id="see-pending">Ver todos</a></div>
@@ -102,7 +105,8 @@ export function render(page) {
     ${state.sales.length ? `<div class="list">${state.sales.slice(0, 5).map(saleRow).join('')}</div>` : '<div class="card muted small">Aún no hay ventas. Toca el botón + para registrar la primera.</div>'}
   `;
 
-  $('#q-sale', page).onclick = () => openNewSale();
+  const qs = $('#q-sale', page);
+  if (qs) qs.onclick = () => openNewSale();
   const sp = $('#see-pending', page);
   if (sp) sp.onclick = () => setFilter('pendientes');
   $$('[data-prod]', page).forEach((b) => (b.onclick = () => openProduct(b.dataset.prod)));

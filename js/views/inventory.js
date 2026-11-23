@@ -1,4 +1,4 @@
-import { state, isOwner, saveRow, deleteRow, adjustStock, stockTotal, sizesOf, dropById, soldLines } from '../db.js';
+import { state, can, saveRow, deleteRow, adjustStock, stockTotal, sizesOf, dropById, soldLines } from '../db.js';
 import { $, $$, esc, Q, int, num, sheet, toast, options, emptyState, resizeImage, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 
@@ -24,7 +24,7 @@ export function sizeChips(p) {
 }
 
 export function render(page) {
-  const owner = isOwner();
+  const owner = can('costos');
   const active = state.products.filter((p) => p.active !== false);
   const units = sumBy(active, stockTotal);
   const costValue = sumBy(active, (p) => stockTotal(p) * (Number(p.cost) || 0));
@@ -44,7 +44,7 @@ export function render(page) {
       <div class="kpi"><div class="k">Prendas en stock</div><div class="v">${int(units)}</div><div class="s">${active.length} productos</div></div>
       <div class="kpi"><div class="k">Valor a precio</div><div class="v">${Q(retailValue)}</div>${owner ? `<div class="s">Costo: ${Q(costValue)}</div>` : ''}</div>
     </div>
-    <div class="btn-row"><button class="btn primary" id="new-product">+ Nuevo producto</button></div>
+    ${can('inventario') ? '<div class="btn-row"><button class="btn primary" id="new-product">+ Nuevo producto</button></div>' : ''}
     <div class="section"><h2>Productos</h2>
       <button class="btn-text" id="toggle-inactive">${showInactive ? 'Ocultar inactivos' : 'Ver inactivos'}</button></div>
     <input class="search" type="search" id="q" placeholder="Buscar por nombre, color, drop…" value="${esc(query)}">
@@ -70,7 +70,8 @@ export function render(page) {
         : emptyState(state.products.length ? 'No hay productos con ese filtro.' : 'Aún no tienes productos. Agrega tu primera playera.')
     }`;
 
-  $('#new-product', page).onclick = () => openProduct();
+  const np = $('#new-product', page);
+  if (np) np.onclick = () => openProduct();
   $('#toggle-inactive', page).onclick = () => {
     showInactive = !showInactive;
     render(page);
@@ -89,7 +90,8 @@ export function render(page) {
 
 export function openProduct(id) {
   const p = state.products.find((x) => x.id === id) || { active: true, min_stock: 2, stock: {}, type: state.settings.types[0] };
-  const owner = isOwner();
+  const owner = can('costos');
+  const editable = can('inventario');
   const sizes = sizesOf(p);
   let photo = p.photo || '';
   const { lines } = soldLines();
@@ -98,11 +100,11 @@ export function openProduct(id) {
   sheet({
     title: id ? p.name : 'Nuevo producto',
     body: `
-      <form class="form" id="pf">
+      <form class="form" id="pf"><fieldset class="readonly form" ${editable ? '' : 'disabled'}>
         <label class="photo-pick">
           <div id="photo-prev">${thumb({ photo }, 'lg')}</div>
           <input type="file" accept="image/*" id="photo-in" aria-label="Foto del producto">
-          <span class="hint muted small" style="display:block;text-align:center;margin-top:6px">Toca para ${photo ? 'cambiar' : 'agregar'} la foto</span>
+          ${editable ? `<span class="hint muted small" style="display:block;text-align:center;margin-top:6px">Toca para ${photo ? 'cambiar' : 'agregar'} la foto</span>` : ''}
         </label>
         <label class="field"><span>Nombre</span><input name="name" required value="${esc(p.name)}" placeholder="Ej. Tee Logo Clásico"></label>
         <div class="grid2">
@@ -132,9 +134,9 @@ export function openProduct(id) {
         <label class="field"><span>Notas</span><textarea name="notes" placeholder="Tela, proveedor, detalles del estampado…">${esc(p.notes)}</textarea></label>
         <label class="check"><input type="checkbox" name="active" ${p.active !== false ? 'checked' : ''}> Producto activo (a la venta)</label>
         ${id ? `<p class="muted small">Vendidas en total: <b>${int(sold)}</b></p>` : ''}
-        <button class="btn primary block" type="submit">Guardar</button>
-        ${id ? `<button class="btn danger block" type="button" id="del">Eliminar producto</button>` : ''}
-      </form>`,
+        ${editable ? `<button class="btn primary block" type="submit">Guardar</button>
+        ${id ? `<button class="btn danger block" type="button" id="del">Eliminar producto</button>` : ''}` : '<p class="muted small">Solo lectura. Para editar productos necesitas el permiso "Editar inventario".</p>'}
+      </fieldset></form>`,
     onMount(root, close) {
       $('#photo-in', root).onchange = async (e) => {
         const f = e.target.files[0];

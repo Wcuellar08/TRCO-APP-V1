@@ -199,7 +199,7 @@ main.page {
 }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
 .field textarea { min-height: 80px; resize: vertical; }
-.field .hint { font-size: 12.5px; color: var(--text-3); }
+.field .hint, .field > span.hint { font-size: 12.5px; color: var(--text-3); text-transform: none; letter-spacing: 0; font-weight: 400; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .size-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -340,3 +340,12 @@ main.page {
   .menu-grid { grid-template-columns: repeat(3, 1fr); }
   .size-grid { grid-template-columns: repeat(6, 1fr); }
 }
+
+/* ── Permisos de usuario ── */
+.perms { display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px; }
+.perm { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.perm:last-child { border-bottom: 0; }
+.perm input { width: 22px; height: 22px; margin: 1px 0 0; accent-color: var(--accent); flex-shrink: 0; }
+.perm span { display: grid; gap: 1px; }
+.perm small { color: var(--text-2); font-size: 12.5px; }
+fieldset.readonly { border: 0; padding: 0; margin: 0; min-width: 0; }

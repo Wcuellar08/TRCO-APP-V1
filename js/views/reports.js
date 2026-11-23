@@ -1,4 +1,4 @@
-import { state, isOwner, soldLines, dropById, customerById } from '../db.js';
+import { state, can, soldLines, dropById, customerById } from '../db.js';
 import {
   $, $$, esc, Q, Qs, int, pct, today, addDays, parseYmd, ymd, startOfMonth, endOfMonth, startOfWeek, MONTHS, WEEKDAYS,
   sumBy, groupSum, barList, columnChart, bindColumnTips, downloadFile, toCSV, fmtDate,
@@ -58,7 +58,8 @@ const ranked = (map, extra) =>
   [...map.entries()].map(([label, value]) => ({ label: label || 'Sin dato', value, ...(extra ? extra(label) : {}) })).sort((a, b) => b.value - a.value);
 
 export function render(page) {
-  const owner = isOwner();
+  const owner = can('costos');
+  const seeExpenses = can('gastos');
   const [from, to] = PRESETS[preset].range();
   const { sales, lines } = soldLines(from, to);
   const val = metric === 'revenue' ? (l) => l.revenue : (l) => l.qty;
@@ -125,8 +126,8 @@ export function render(page) {
       <div class="kv"><span>Ventas (sin envío)</span><span>${Q(revenue)}</span></div>
       <div class="kv"><span>− Costo de prendas vendidas</span><span>${Q(cogs)}</span></div>
       <div class="kv total"><span>Ganancia bruta</span><span>${Q(gross)} <span class="muted small">(${pct(revenue ? gross / revenue : 0)})</span></span></div>
-      <div class="kv"><span>− Gastos del negocio</span><span>${Q(expTotal)}</span></div>
-      <div class="kv total"><span>Ganancia neta</span><span style="color:${net < 0 ? 'var(--danger)' : 'var(--accent)'}">${Q(net)} <span class="muted small">(${pct(revenue ? net / revenue : 0)})</span></span></div>
+      ${seeExpenses ? `<div class="kv"><span>− Gastos del negocio</span><span>${Q(expTotal)}</span></div>
+      <div class="kv total"><span>Ganancia neta</span><span style="color:${net < 0 ? 'var(--danger)' : 'var(--accent)'}">${Q(net)} <span class="muted small">(${pct(revenue ? net / revenue : 0)})</span></span></div>` : ''}
       <p class="muted small" style="margin:10px 0 0">Envíos cobrados a clientes: ${Q(shippingCharged)}. Invertido en producción en este periodo: ${Q(prodInvest)} (es inventario, no gasto: se cuenta como costo cuando la prenda se vende).</p>
     </div>` : ''}
 
@@ -163,10 +164,10 @@ export function render(page) {
     ${owner ? `
     <div class="section"><h2>Ganancia por producto</h2></div>
     <div class="card">${barList(marginByProduct, { fmt: Qs, max: 10 })}</div>
-    <div class="section"><h2>Gastos por categoría</h2><a href="#gastos">Gastos</a></div>
-    <div class="card">${barList(byExpense, { fmt: Qs })}</div>` : ''}
+    ${seeExpenses ? `<div class="section"><h2>Gastos por categoría</h2><a href="#gastos">Gastos</a></div>
+    <div class="card">${barList(byExpense, { fmt: Qs })}</div>` : ''}` : ''}
 
-    <div class="btn-row"><button class="btn" id="csv">Descargar ventas (Excel / CSV)</button></div>
+    ${can('exportar') ? '<div class="btn-row"><button class="btn" id="csv">Descargar ventas (Excel / CSV)</button></div>' : ''}
   `;
 
   $$('[data-p]', page).forEach((el) => (el.onclick = () => ((preset = el.dataset.p), render(page))));
@@ -178,7 +179,8 @@ export function render(page) {
   }
   bindColumnTips(page);
 
-  $('#csv', page).onclick = () => {
+  const csvBtn = $('#csv', page);
+  if (csvBtn) csvBtn.onclick = () => {
     const cols = [
       { label: 'Fecha', get: (l) => l.sale.date },
       { label: 'Cliente', get: (l) => customerById(l.sale.customer_id)?.name || '' },

@@ -63,7 +63,7 @@ const local = {
     for (const t of TABLES) this.data[t] ??= [];
     if (!this.data.settings.length) this.data.settings = [{ id: 1, data: { ...DEFAULT_SETTINGS } }];
     if (!this.data.profiles.length)
-      this.data.profiles = [{ id: 'demo', email: 'demo@trco', name: 'Dueño (demo)', role: 'owner' }];
+      this.data.profiles = [{ id: 'demo', username: 'demo', name: 'Dueño (demo)', role: 'owner', active: true }];
     return this.data;
   },
   save() {
@@ -133,17 +133,26 @@ const FB = 'https://www.gstatic.com/firebasejs/10.12.2';
 let fb = null;
 async function firebase() {
   if (fb) return fb;
-  const [appMod, authMod, fsMod] = await Promise.all([
+  const [appMod, authMod, fsMod, fnMod] = await Promise.all([
     import(`${FB}/firebase-app.js`),
     import(`${FB}/firebase-auth.js`),
     import(`${FB}/firebase-firestore.js`),
+    import(`${FB}/firebase-functions.js`),
   ]);
   const app = appMod.initializeApp(FIREBASE_CONFIG);
-  fb = { ...authMod, ...fsMod, auth: authMod.getAuth(app), fs: fsMod.getFirestore(app) };
+  fb = {
+    ...authMod,
+    ...fsMod,
+    httpsCallable: fnMod.httpsCallable,
+    auth: authMod.getAuth(app),
+    fs: fsMod.getFirestore(app),
+    fns: fnMod.getFunctions(app, 'us-central1'),
+  };
   if (window.TRCO_EMULATOR) {
     // Solo para pruebas locales con el emulador de Firebase.
     authMod.connectAuthEmulator(fb.auth, 'http://127.0.0.1:9099', { disableWarnings: true });
     fsMod.connectFirestoreEmulator(fb.fs, '127.0.0.1', 8080);
+    fnMod.connectFunctionsEmulator(fb.fns, '127.0.0.1', 5001);
   }
   return fb;
 }
@@ -220,29 +229,6 @@ const cloud = {
       if (e?.code !== 'not-found') throw e;
     }
   },
-  // Crea el perfil la primera vez que alguien entra. La primera cuenta es la del dueño.
-  async ensureProfile(user, name) {
-    const f = await firebase();
-    const ref = f.doc(f.fs, 'profiles', user.id);
-    const existing = await f.getDoc(ref);
-    if (existing.exists()) return { ...existing.data(), id: user.id };
-    const base = { email: user.email, name: name || user.name || user.email.split('@')[0], created_at: new Date().toISOString() };
-    const ownerRef = f.doc(f.fs, 'meta', 'owner');
-    const hasOwner = (await f.getDoc(ownerRef)).exists();
-    if (!hasOwner) {
-      try {
-        const batch = f.writeBatch(f.fs);
-        batch.set(ownerRef, { uid: user.id });
-        batch.set(ref, { ...base, role: 'owner' });
-        await batch.commit();
-        return { ...base, role: 'owner', id: user.id };
-      } catch {
-        /* alguien más ya es dueño: queda pendiente */
-      }
-    }
-    await f.setDoc(ref, { ...base, role: 'pending' });
-    return { ...base, role: 'pending', id: user.id };
-  },
 };
 
 const db = CLOUD ? cloud : local;
@@ -252,49 +238,79 @@ export async function currentUser() {
   return db.session();
 }
 
-const authError = (e) => {
+// Los usuarios entran con "usuario"; Firebase necesita un correo interno.
+const USER_DOMAIN = 'usuarios.trco.app';
+export const cleanUsername = (u) => String(u || '').trim().toLowerCase();
+const emailOf = (u) => `${cleanUsername(u)}@${USER_DOMAIN}`;
+
+const fbError = (e) => {
   const map = {
-    'auth/invalid-credential': 'Correo o contraseña incorrectos',
-    'auth/wrong-password': 'Correo o contraseña incorrectos',
-    'auth/user-not-found': 'Correo o contraseña incorrectos',
-    'auth/invalid-email': 'Ese correo no es válido',
-    'auth/email-already-in-use': 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta".',
+    'auth/invalid-credential': 'Usuario o contraseña incorrectos',
+    'auth/wrong-password': 'Usuario o contraseña incorrectos',
+    'auth/user-not-found': 'Usuario o contraseña incorrectos',
+    'auth/invalid-email': 'Usuario o contraseña incorrectos',
+    'auth/user-disabled': 'Tu usuario está desactivado. Habla con el Dueño.',
     'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres',
+    'auth/requires-recent-login': 'Por seguridad, sal y vuelve a entrar para cambiar tu contraseña.',
     'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos.',
     'auth/network-request-failed': 'Sin conexión a internet',
-    'auth/operation-not-allowed': 'Activa "Correo/contraseña" en Firebase → Authentication',
+    'functions/unavailable': 'Sin conexión a internet',
+    'functions/not-found': 'Falta publicar las funciones de Firebase (ver README).',
+    'functions/internal': 'Ocurrió un error en el servidor. Intenta de nuevo.',
   };
+  // Los errores de nuestras funciones ya vienen en español.
+  if (String(e?.code || '').startsWith('functions/') && !map[e.code]) return new Error(e.message);
   return new Error(map[e?.code] || e?.message || 'Ocurrió un error');
 };
 
-export async function signIn(email, password) {
+async function call(name, data) {
   const f = await firebase();
   try {
-    await f.signInWithEmailAndPassword(f.auth, email, password);
+    return (await f.httpsCallable(f.fns, name)(data)).data;
   } catch (e) {
-    throw authError(e);
+    throw fbError(e);
   }
 }
 
-export async function signUp(email, password, name) {
+export async function signIn(username, password) {
   const f = await firebase();
   try {
-    const cred = await f.createUserWithEmailAndPassword(f.auth, email, password);
-    await f.updateProfile(cred.user, { displayName: name });
-    await cloud.ensureProfile({ id: cred.user.uid, email: cred.user.email, name }, name);
+    await f.signInWithEmailAndPassword(f.auth, emailOf(username), password);
   } catch (e) {
-    throw authError(e);
+    throw fbError(e);
   }
 }
 
-export async function sendReset(email) {
+// ¿Ya existe la cuenta del Dueño? (Si no, la app muestra la pantalla de primera vez.)
+export async function ownerExists() {
+  const f = await firebase();
+  return (await f.getDoc(f.doc(f.fs, 'meta', 'owner'))).exists();
+}
+
+export async function createOwner({ username, name, password }) {
+  await call('bootstrapOwner', { username: cleanUsername(username), name, password });
+  await signIn(username, password);
+}
+
+// Cambiar mi contraseña (solo cuando el Dueño me asignó una temporal).
+export async function changeMyPassword(newPassword) {
   const f = await firebase();
   try {
-    await f.sendPasswordResetEmail(f.auth, email);
+    await f.updatePassword(f.auth.currentUser, newPassword);
+    await f.updateDoc(f.doc(f.fs, 'profiles', f.auth.currentUser.uid), { must_change_password: false });
   } catch (e) {
-    throw authError(e);
+    throw fbError(e);
   }
+  state.profile.must_change_password = false;
 }
+
+// ── Gestión de usuarios (solo Dueño; se ejecuta en Cloud Functions) ──
+export const users = {
+  create: (data) => call('createUser', { ...data, username: cleanUsername(data.username) }),
+  update: (data) => call('updateUser', data),
+  resetPassword: (uid, password) => call('resetPassword', { uid, password }),
+  remove: (uid) => call('deleteUser', { uid }),
+};
 
 export async function signOut() {
   if (CLOUD) {
@@ -322,26 +338,34 @@ function applySettings() {
 }
 
 export async function refresh(tables = TABLES) {
-  // El equipo no tiene permiso de leer gastos.
-  tables = tables.filter((t) => t !== 'expenses' || isOwner());
+  // Sin permiso de gastos no se pueden leer.
+  tables = tables.filter((t) => t !== 'expenses' || can('gastos'));
   const results = await Promise.all(tables.map((t) => db.all(t)));
   tables.forEach((t, i) => {
     if (t === 'settings') state._settingsRow = results[i][0] || null;
     else state[t] = results[i];
   });
+  // Mis permisos pudieron cambiar.
+  if (tables.includes('profiles') && state.profile) {
+    state.profile = state.profiles.find((p) => p.id === state.profile.id) || { ...state.profile, active: false };
+  }
   applySettings();
   sortState();
 }
 
 export async function loadAll(user) {
   state.user = user;
-  state.profile = CLOUD ? await cloud.ensureProfile(user) : await local.getOne('profiles', 'demo');
-  if (!state.profile || state.profile.role === 'pending') return false;
+  state.profile = await db.getOne('profiles', CLOUD ? user.id : 'demo');
+  if (!state.profile) return 'sin_perfil';
+  if (state.profile.active === false) return 'inactivo';
+  if (state.profile.must_change_password) return 'cambiar_clave';
   await refresh(TABLES);
-  return true;
+  return 'ok';
 }
 
 export const isOwner = () => state.profile?.role === 'owner';
+// ¿El usuario actual puede hacer esto? El Dueño puede todo.
+export const can = (perm) => isOwner() || (state.profile?.role === 'colaborador' && state.profile?.permissions?.[perm] === true);
 
 // ───────────────────────── Escritura genérica ─────────────────────────
 export async function saveRow(table, row) {

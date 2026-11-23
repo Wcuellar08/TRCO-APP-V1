@@ -17,7 +17,14 @@ App web instalable (PWA) para iPhone y iPad que controla el negocio de **TRCO**:
 | **Drops** | Colecciones: cuánto vendió cada una y qué % ya se vendió |
 | **Ajustes** | Equipo y roles, catálogos (tipos, tallas, canales, pagos), respaldos |
 
-**Roles:** el **dueño** ve todo. El **equipo** registra ventas, inventario, clientes y producción, pero no ve costos, ganancias ni gastos.
+**Usuarios y permisos:** se entra con **usuario y contraseña**. La primera vez se crea la cuenta del **Dueño**. El Dueño da de alta a cada persona en *Más → Usuarios* con una contraseña temporal; al entrar por primera vez, cada quien crea la suya. Si alguien la olvida, el Dueño le asigna otra temporal (no hay "olvidé mi contraseña").
+
+| Rol | Puede |
+|---|---|
+| **Dueño** | Todo, incluidos usuarios, permisos y catálogos |
+| **Colaborador** | Ver inventario, ventas y drops, más lo que el Dueño le active: registrar ventas, actualizar pedidos, cancelar/eliminar ventas, editar inventario, producción, clientes, reportes, costos y ganancias, gastos, descargar a Excel |
+
+Los permisos se aplican en la app **y** en la base de datos (reglas de Firestore), así que no se pueden saltar.
 
 ---
 
@@ -32,18 +39,32 @@ python3 -m http.server 8000
 # abre http://localhost:8000
 ```
 
-## 2. Conectar la nube (Firebase, gratis)
+## 2. Conectar la nube (Firebase)
 
-1. Entra a [console.firebase.google.com](https://console.firebase.google.com) → **Agregar proyecto** (ej. `trco-app`). Google Analytics no hace falta.
-2. **Authentication** → *Comenzar* → pestaña *Sign-in method* → activa **Correo electrónico/contraseña**.
-3. **Firestore Database** → *Crear base de datos* → ubicación `nam5 (us-central)` → *Modo de producción*.
-4. En Firestore → pestaña **Reglas**: borra lo que hay, pega todo [`firebase/firestore.rules`](firebase/firestore.rules) → **Publicar**.
-5. ⚙️ **Configuración del proyecto** → *General* → *Tus apps* → ícono web **`</>`** → registra la app (ej. "TRCO web", sin Hosting). Copia los valores de `firebaseConfig` en [`js/config.js`](js/config.js) (o pásaselos a Claude).
+Los usuarios se gestionan con **Cloud Functions**, que requieren el plan **Blaze** de Firebase (pago por uso; pide tarjeta, pero con el uso de TRCO normalmente sale en US$0 porque incluye una cuota gratis grande).
+
+1. En [console.firebase.google.com](https://console.firebase.google.com) → **Agregar proyecto** (ej. `trco-app`). Google Analytics no hace falta.
+2. Abajo a la izquierda → **Actualizar** → plan **Blaze**. Recomendado: pon una alerta de presupuesto de US$1.
+3. **Authentication** → *Comenzar* → *Sign-in method* → activa **Correo electrónico/contraseña** (internamente los usuarios usan un correo ficticio `usuario@usuarios.trco.app`).
+4. **Firestore Database** → *Crear base de datos* → ubicación `nam5 (us-central)` → *Modo de producción*.
+5. ⚙️ **Configuración del proyecto** → *General* → *Tus apps* → ícono web **`</>`** → registra la app (sin Hosting). Copia `firebaseConfig` en [`js/config.js`](js/config.js) (o pásaselo a Claude).
 6. **Authentication → Settings → Dominios autorizados** → agrega `wcuellar08.github.io`.
-7. Abre la app y toca **Crear cuenta**. **La primera cuenta que se registre será la del dueño** (tú). Hazlo antes que nadie.
-8. Tu equipo crea su cuenta desde la app y entra como *Sin acceso* hasta que tú le asignes un rol en **Más → Ajustes → Equipo**.
+7. **Publicar reglas y funciones.** Abre [Google Cloud Shell](https://shell.cloud.google.com) (terminal en el navegador, con tu misma cuenta de Google) y corre:
+   ```bash
+   git clone https://github.com/Wcuellar08/TRCO-APP-V1.git && cd TRCO-APP-V1
+   (cd functions && npm ci)
+   npx firebase-tools@13 login --no-localhost
+   npx firebase-tools@13 deploy --only firestore:rules,functions --project TU-PROYECTO-ID
+   ```
+   Repite los dos últimos comandos (con `git pull` antes) cada vez que cambien `functions/` o `firebase/firestore.rules`.
+8. Abre la app: te pedirá **crear la cuenta del Dueño**. Hazlo tú primero.
 
-> El plan gratis de Firebase (Spark) aguanta de sobra: 50,000 lecturas y 20,000 escrituras al día.
+### Probar localmente con emuladores
+
+```bash
+(cd functions && npm install)
+npx firebase-tools@13 emulators:start --only auth,firestore,functions --project demo-trco
+```
 
 ## 3. Publicarla en internet (GitHub Pages)
 
@@ -82,7 +103,9 @@ css/app.css           Estilos
 js/config.js          Claves de Firebase
 js/db.js              Datos (Firebase o modo demo) y lógica de inventario/ventas
 js/ui.js              Formatos, fechas, gráficas, ventanas
-js/views/*.js         Cada pantalla
+js/views/*.js         Cada pantalla (users.js = gestión de usuarios)
+js/permissions.js     Lista de permisos de colaborador
+functions/            Cloud Functions: crear/editar usuarios y contraseñas (solo Dueño)
 js/demo.js            Datos de ejemplo
 firebase/firestore.rules  Reglas de seguridad de la base de datos
 ```
@@ -90,4 +113,6 @@ firebase/firestore.rules  Reglas de seguridad de la base de datos
 ### Notas de seguridad
 
 - Las claves de `js/config.js` son públicas por diseño (van dentro de cualquier app web de Firebase). Lo que protege los datos son las reglas de `firebase/firestore.rules`: solo los usuarios aprobados ven o cambian información.
-- Los **gastos** están protegidos en la base de datos: solo el dueño puede leerlos. El **costo** de los productos se oculta al equipo en la app, pero técnicamente un usuario del equipo con conocimientos podría leerlo desde la base de datos.
+- Crear usuarios, cambiar roles/permisos y asignar contraseñas solo se puede desde las Cloud Functions, que verifican que quien lo pide sea un Dueño activo.
+- Las reglas de Firestore revisan los permisos de cada persona en cada lectura/escritura. Desactivar a alguien lo bloquea al instante.
+- Excepción conocida: el **costo** de los productos se oculta en la app a quien no tiene el permiso "Ver costos", pero viaja junto con el producto, así que alguien con conocimientos técnicos podría leerlo desde la base de datos.
