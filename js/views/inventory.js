@@ -1,6 +1,10 @@
 import { state, can, saveRow, deleteRow, adjustStock, stockTotal, sizesOf, dropById, soldLines } from '../db.js';
 import { $, $$, esc, Q, int, num, sheet, toast, options, emptyState, resizeImage, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
+import { icons } from '../icons.js';
+import { openScanner } from '../scanner.js';
+import { openLabels } from '../labels.js';
+import { nextProductCode } from '../codes.js';
 
 let query = '';
 let typeFilter = '';
@@ -36,7 +40,7 @@ export function render(page) {
     (p) =>
       (showInactive || p.active !== false) &&
       (!typeFilter || p.type === typeFilter) &&
-      (!q || [p.name, p.color, p.type, dropById(p.drop_id)?.name].join(' ').toLowerCase().includes(q))
+      (!q || [p.name, p.color, p.type, p.code, dropById(p.drop_id)?.name].join(' ').toLowerCase().includes(q))
   );
 
   page.innerHTML = `
@@ -47,7 +51,10 @@ export function render(page) {
     ${can('inventario') ? '<div class="btn-row"><button class="btn primary" id="new-product">+ Nuevo producto</button></div>' : ''}
     <div class="section"><h2>Productos</h2>
       <button class="btn-text" id="toggle-inactive">${showInactive ? 'Ocultar inactivos' : 'Ver inactivos'}</button></div>
-    <input class="search" type="search" id="q" placeholder="Buscar por nombre, color, drop…" value="${esc(query)}">
+    <div class="search-row">
+      <input class="search" type="search" id="q" placeholder="Buscar por nombre, código, drop…" value="${esc(query)}">
+      <button class="btn scan-mini" type="button" id="inv-scan" aria-label="Escanear etiqueta">${icons.scan}</button>
+    </div>
     ${types.length > 1 ? `<div class="chips" style="margin-bottom:10px">
       <button class="chip ${!typeFilter ? 'active' : ''}" data-type="">Todos</button>
       ${types.map((t) => `<button class="chip ${typeFilter === t ? 'active' : ''}" data-type="${esc(t)}">${esc(t)}</button>`).join('')}
@@ -70,6 +77,7 @@ export function render(page) {
         : emptyState(state.products.length ? 'No hay productos con ese filtro.' : 'Aún no tienes productos. Agrega tu primera playera.')
     }`;
 
+  $('#inv-scan', page).onclick = scanToCheck;
   const np = $('#new-product', page);
   if (np) np.onclick = () => openProduct();
   $('#toggle-inactive', page).onclick = () => {
@@ -106,6 +114,7 @@ export function openProduct(id) {
           <input type="file" accept="image/*" id="photo-in" aria-label="Foto del producto">
           ${editable ? `<span class="hint muted small" style="display:block;text-align:center;margin-top:6px">Toca para ${photo ? 'cambiar' : 'agregar'} la foto</span>` : ''}
         </label>
+        ${p.code ? `<p class="muted small" style="margin:0">Código <b>${esc(p.code)}</b></p>` : ''}
         <label class="field"><span>Nombre</span><input name="name" required value="${esc(p.name)}" placeholder="Ej. Tee Logo Clásico"></label>
         <div class="grid2">
           <label class="field"><span>Tipo</span><select name="type">${options(state.settings.types, p.type)}</select></label>
@@ -134,6 +143,7 @@ export function openProduct(id) {
         <label class="field"><span>Notas</span><textarea name="notes" placeholder="Tela, proveedor, detalles del estampado…">${esc(p.notes)}</textarea></label>
         <label class="check"><input type="checkbox" name="active" ${p.active !== false ? 'checked' : ''}> Producto activo (a la venta)</label>
         ${id ? `<p class="muted small">Vendidas en total: <b>${int(sold)}</b></p>` : ''}
+        ${id && editable ? `<button class="btn block" type="button" id="labels">${icons.tag} Imprimir etiquetas QR</button>` : ''}
         ${editable ? `<button class="btn primary block" type="submit">Guardar</button>
         ${id ? `<button class="btn danger block" type="button" id="del">Eliminar producto</button>` : ''}` : '<p class="muted small">Solo lectura. Para editar productos necesitas el permiso "Editar inventario".</p>'}
       </fieldset></form>`,
@@ -171,7 +181,14 @@ export function openProduct(id) {
         btn.disabled = true;
         try {
           if (!id) {
-            await saveRow('products', { ...row, stock: newStock });
+            const created = await saveRow('products', { ...row, stock: newStock, code: nextProductCode() });
+            toast('Producto guardado');
+            close();
+            bus.rerender();
+            const fresh = state.products.find((x) => x.id === created.id);
+            if (fresh && Object.values(newStock).some((n) => n > 0) && (await confirmAction('¿Imprimir las etiquetas QR de este producto ahora?', { ok: 'Imprimir etiquetas' })))
+              openLabels(fresh);
+            return;
           } else {
             const old = p.stock || {};
             const removed = Object.keys(old).some((k) => !(k in newStock));
@@ -192,6 +209,8 @@ export function openProduct(id) {
           toast(err.message, 'error');
         }
       };
+      const lb = $('#labels', root);
+      if (lb) lb.onclick = () => openLabels(state.products.find((x) => x.id === id) || p);
       const del = $('#del', root);
       if (del)
         del.onclick = async () => {
@@ -209,3 +228,28 @@ export function openProduct(id) {
   });
 }
 
+
+// Escanear en Inventario: muestra el stock de todas las tallas de esa prenda.
+function scanToCheck() {
+  openScanner({
+    title: 'Consultar stock',
+    onMatch: ({ product: p, size }) => {
+      const sizes = sizesOf(p).filter((s) => s in (p.stock || {}));
+      return {
+        html: `<div class="scan-item">${thumb(p)}
+          <div class="row-main"><b>${esc(p.name)}</b><div class="muted small">${esc([p.type, dropById(p.drop_id)?.name].filter(Boolean).join(' · '))} · ${Q(p.price)}</div></div></div>
+          <div class="scan-stock">${sizes
+            .map((s) => {
+              const n = Number(p.stock[s]) || 0;
+              return `<div class="${s === size ? 'hit' : ''} ${n <= 0 ? 'out' : ''}"><b>${esc(s)}</b><span>${n <= 0 ? 'Agotada' : n}</span></div>`;
+            })
+            .join('')}</div>`,
+        actionLabel: 'Ver producto',
+        onAction: () => {
+          setTimeout(() => openProduct(p.id), 50);
+          return false; // cierra la cámara
+        },
+      };
+    },
+  });
+}

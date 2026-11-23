@@ -39,6 +39,16 @@ export function render(page) {
       ).join('')}
       <span class="hint muted small">Separa con comas. Cambiar un nombre aquí no cambia ventas pasadas.</span>
       <button class="btn primary block" type="submit">Guardar catálogos</button>
+    </form>
+
+    <div class="section"><h2>Etiquetas QR</h2></div>
+    <form class="card form" id="label-form">
+      <div class="grid2">
+        <label class="field"><span>Ancho (mm)</span><input name="label_w" id="label-w" inputmode="numeric" value="${esc(state.settings.label_w || 40)}"></label>
+        <label class="field"><span>Alto (mm)</span><input name="label_h" id="label-h" inputmode="numeric" value="${esc(state.settings.label_h || 30)}"></label>
+      </div>
+      <span class="hint muted small">Usa el tamaño de los stickers de tu impresora (Niimbot B1: 40 × 30 mm recomendado).</span>
+      <button class="btn block" type="submit">Guardar tamaño</button>
     </form>` : ''}
 
     ${exportOk || !CLOUD ? `
@@ -84,6 +94,21 @@ export function render(page) {
         await saveSettings(data);
         toast('Catálogos guardados');
         bus.rerender();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
+
+  const labelForm = $('#label-form', page);
+  if (labelForm)
+    labelForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const w = Math.round(Number(labelForm.label_w.value));
+      const h = Math.round(Number(labelForm.label_h.value));
+      if (!(w >= 25 && w <= 100 && h >= 15 && h <= 100)) return toast('Usa un tamaño entre 25 y 100 mm de ancho, y 15 y 100 mm de alto', 'error');
+      try {
+        await saveSettings({ ...state.settings, label_w: w, label_h: h });
+        toast('Tamaño de etiqueta guardado');
       } catch (err) {
         toast(err.message, 'error');
       }

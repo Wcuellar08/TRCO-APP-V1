@@ -1,6 +1,6 @@
 // Service worker: permite abrir la app sin internet y que cargue rápido.
 // Cambia VERSION cuando publiques cambios para forzar la actualización.
-const VERSION = 'trco-v1.7.0';
+const VERSION = 'trco-v1.8.0';
 const SHELL = [
   './',
   'index.html',
@@ -8,6 +8,11 @@ const SHELL = [
   'css/app.css',
   'js/app.js',
   'js/bus.js',
+  'js/codes.js',
+  'js/labels.js',
+  'js/scanner.js',
+  'js/vendor/qrcode.js',
+  'js/vendor/jsQR.js',
   'js/config.js',
   'js/db.js',
   'js/demo.js',

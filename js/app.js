@@ -80,6 +80,8 @@ function render() {
     return;
   }
   closeUserMenu();
+  // Al cambiar de pantalla se cierran las hojas abiertas.
+  if (location.hash !== lastRoute) document.querySelectorAll('.sheet-wrap [data-close]').forEach((b) => b.click());
   document.title = `${r.title} · TRCO`;
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === r.tab));
   const page = $('#page');

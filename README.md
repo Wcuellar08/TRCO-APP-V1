@@ -8,6 +8,8 @@ App web instalable (PWA) para iPhone y iPad que controla el negocio de **TRCO**:
 |---|---|
 | **Inicio** | Ventas de hoy, la semana y el mes (con comparación contra el mes pasado), ganancia neta, saldos por cobrar, pendientes, stock bajo y producción en camino |
 | **Inventario** | Productos con foto, tipo, color, drop, precio, costo y stock **por talla**. Alertas de stock bajo |
+| **Etiquetas QR** | Cada producto tiene un código (`TRCO-0012`) y cada talla una etiqueta con QR (`TRCO-0012-M`), nombre, tipo, drop, precio y talla. Se imprimen en impresoras de etiquetas (Niimbot, Phomemo…) compartiendo las imágenes, o por AirPrint. Tamaño configurable en Ajustes (40 × 30 mm por defecto) |
+| **Escáner** | Al vender: modo ráfaga con la cámara, cada prenda escaneada muestra "Agregar". En Inventario: escanear para ver el stock de todas las tallas |
 | **＋ Vender** | Registro rápido: producto → talla → cantidad. Descuenta el inventario solo. Admite descuentos, envío, anticipos/apartados y clientes nuevos |
 | **Ventas / Pedidos** | Historial por día y filtros: pendientes, por enviar, apartados, por cobrar. Registrar pagos, número de guía, cancelar (regresa el stock) |
 | **Reportes** | Por periodo: ventas en el tiempo, productos más vendidos, tipo de prenda, talla, color, día de la semana, canal, drop, método de pago, mejores clientes, ganancia por producto y gastos. Exporta a Excel (CSV) |
@@ -103,6 +105,10 @@ css/app.css           Estilos
 js/config.js          Claves de Firebase
 js/db.js              Datos (Firebase o modo demo) y lógica de inventario/ventas
 js/ui.js              Formatos, fechas, gráficas, ventanas
+js/codes.js           Códigos de producto y lectura de QR
+js/labels.js          Generación e impresión de etiquetas
+js/scanner.js         Escáner con la cámara
+js/vendor/            Librerías QR (qrcode-generator MIT, jsQR Apache-2.0)
 js/views/*.js         Cada pantalla (users.js = gestión de usuarios)
 js/permissions.js     Lista de permisos de colaborador
 functions/            Cloud Functions: crear/editar usuarios y contraseñas (solo Dueño)

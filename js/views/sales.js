@@ -1,10 +1,12 @@
 import {
   state, can, createSale, updateSale, deleteSale, saveRow, SALE_STATUS, itemsOf, customerById,
-  productById, profileName, saleBalance, isPending, sizesOf, stockTotal,
+  productById, dropById, profileName, saleBalance, isPending, sizesOf, stockTotal,
 } from '../db.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, fmtDateLong, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
 import { thumb } from './inventory.js';
+import { openScanner } from '../scanner.js';
+import { icons } from '../icons.js';
 
 let filter = 'todas';
 let query = '';
@@ -120,7 +122,8 @@ export function openNewSale({ customerId } = {}) {
     title: 'Nueva venta',
     body: `
       <div class="form">
-        <div class="field"><span>Prenda</span>
+        <button type="button" class="btn primary block scan-btn" id="scan">${icons.scan} Escanear etiquetas</button>
+        <div class="field"><span>O elige la prenda</span>
           <select id="p-product">${options(
             products.map((p) => ({ value: p.id, label: `${p.name}${p.color ? ' · ' + p.color : ''} (${stockTotal(p)})` })),
             '',
@@ -169,6 +172,35 @@ export function openNewSale({ customerId } = {}) {
     onMount(root, close) {
       const productSel = $('#p-product', root);
 
+      const inCartOf = (pid, sz) => sumBy(cart.filter((c) => c.product_id === pid && c.size === sz), (c) => c.qty);
+      // Agrega al carrito; si ya está la misma prenda y talla al mismo precio, suma la cantidad.
+      const addItem = (p, size, qty, price) => {
+        const same = cart.find((c) => c.product_id === p.id && c.size === size && c.unit_price === price);
+        if (same) same.qty += qty;
+        else
+          cart.push({ product_id: p.id, product_name: p.name, type: p.type, size, qty, unit_price: price, unit_cost: Number(p.cost) || 0 });
+        renderCart();
+      };
+
+      $('#scan', root).onclick = () =>
+        openScanner({
+          title: 'Escanear prendas',
+          counterLabel: (n) => `${n} agregada${n === 1 ? '' : 's'}`,
+          onMatch: ({ product: p, size }) => {
+            const left = (Number(p.stock?.[size]) || 0) - inCartOf(p.id, size);
+            const inactive = p.active === false;
+            return {
+              html: `<div class="scan-item">${thumb(p)}
+                <div class="row-main"><b>${esc(p.name)}</b><div class="muted small">${esc([p.type, dropById(p.drop_id)?.name].filter(Boolean).join(' · '))}</div>
+                  <div class="scan-meta"><span class="scan-size">${esc(size)}</span><b>${Q(p.price)}</b>
+                  ${left > 0 ? `<span class="muted small">Quedan ${left}</span>` : '<span class="badge danger">Sin stock en la app</span>'}
+                  ${inactive ? '<span class="badge muted">Inactivo</span>' : ''}</div></div></div>`,
+              actionLabel: left > 0 ? 'Agregar' : 'Agregar de todos modos',
+              onAction: () => addItem(p, size, 1, Number(p.price) || 0),
+            };
+          },
+        });
+
       const renderPicker = () => {
         const p = productById(pick.productId);
         if (!p) return ($('#picker', root).innerHTML = '');
@@ -197,7 +229,7 @@ export function openNewSale({ customerId } = {}) {
             <button type="button" class="btn block" id="add" style="margin-top:12px" ${pick.size ? '' : 'disabled'}>Agregar a la venta</button>
           </div>`;
         $$('[data-sz]', root).forEach((b) => (b.onclick = () => ((pick.size = b.dataset.sz), renderPicker())));
-        $$('[data-step]', root).forEach(
+        $$('#picker [data-step]', root).forEach(
           (b) => (b.onclick = () => ((pick.qty = Math.max(1, (Number($('#qty', root).value) || 1) + Number(b.dataset.step))), renderPicker()))
         );
         $('#qty', root).oninput = (e) => (pick.qty = Math.max(1, Math.round(num(e.target.value)) || 1));
@@ -205,19 +237,10 @@ export function openNewSale({ customerId } = {}) {
         $('#add', root).onclick = async () => {
           const left = (Number(p.stock[pick.size]) || 0) - inCart(pick.size);
           if (pick.qty > left && !(await confirmAction(`Solo hay ${left} en talla ${pick.size}. ¿Agregar de todos modos?`, { ok: 'Agregar' }))) return;
-          cart.push({
-            product_id: p.id,
-            product_name: p.name,
-            type: p.type,
-            size: pick.size,
-            qty: pick.qty,
-            unit_price: num(pick.price),
-            unit_cost: Number(p.cost) || 0,
-          });
+          addItem(p, pick.size, pick.qty, num(pick.price));
           pick = { productId: '', size: '', qty: 1, price: '' };
           productSel.value = '';
           renderPicker();
-          renderCart();
         };
       };
 
@@ -241,6 +264,7 @@ export function openNewSale({ customerId } = {}) {
               .map(
                 (c, i) => `<div class="cart-item">
                 <div class="row-main"><b>${esc(c.product_name)}</b><div class="muted small">Talla ${esc(c.size)} · ${c.qty} × ${Q(c.unit_price)}</div></div>
+                <div class="stepper sm"><button type="button" data-cq="${i}" data-d="-1" aria-label="Menos">−</button><span>${c.qty}</span><button type="button" data-cq="${i}" data-d="1" aria-label="Más">+</button></div>
                 <b class="num">${Q(c.qty * c.unit_price)}</b>
                 <button type="button" class="btn-text" data-rm="${i}" aria-label="Quitar" style="color:var(--danger);font-size:22px;padding:0 4px">×</button>
               </div>`
@@ -248,6 +272,15 @@ export function openNewSale({ customerId } = {}) {
               .join('')}</div>`
           : '';
         $$('[data-rm]', root).forEach((b) => (b.onclick = () => (cart.splice(Number(b.dataset.rm), 1), renderCart())));
+        $$('[data-cq]', root).forEach(
+          (b) =>
+            (b.onclick = () => {
+              const item = cart[Number(b.dataset.cq)];
+              item.qty += Number(b.dataset.d);
+              if (item.qty <= 0) cart.splice(Number(b.dataset.cq), 1);
+              renderCart();
+            })
+        );
         renderTotals();
       };
 

@@ -39,8 +39,9 @@ export function buildDemoData() {
     ['Oversize Noche', 'Playera oversize', 'Azul marino', 2, 220, 80],
     ['Boxy Luna', 'Playera boxy', 'Negro', 2, 225, 82],
   ];
-  const products = defs.map(([name, type, color, d, price, cost]) => ({
+  const products = defs.map(([name, type, color, d, price, cost], i) => ({
     id: id('p'),
+    code: `TRCO-${String(i + 1).padStart(4, '0')}`,
     name,
     type,
     color,

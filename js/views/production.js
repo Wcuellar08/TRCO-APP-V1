@@ -1,6 +1,7 @@
 import { state, can, saveRow, deleteRow, receiveProduction, productById, batchQty, unitCostOf, PROD_STATUS, sizesOf } from '../db.js';
 import { $, $$, esc, Q, int, num, today, fmtDate, sheet, toast, options, emptyState, confirmAction, sumBy } from '../ui.js';
 import { bus } from '../bus.js';
+import { openLabels } from '../labels.js';
 
 export function render(page) {
   const owner = can('costos');
@@ -138,6 +139,9 @@ export function openBatch(id) {
             toast('Inventario actualizado');
             close();
             bus.rerender();
+            const fresh = productById(b.product_id);
+            if (fresh && can('inventario') && (await confirmAction(`¿Imprimir las ${batchQty(b)} etiquetas QR de lo que llegó?`, { ok: 'Imprimir etiquetas' })))
+              openLabels(fresh, b.quantities);
           } catch (err) {
             toast(err.message, 'error');
           }
