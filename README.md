@@ -30,7 +30,7 @@ Los permisos se aplican en la app **y** en la base de datos (reglas de Firestore
 
 ## 1. Probarla ya (modo demo)
 
-Sin configurar nada, la app funciona en **modo demo**: los datos se guardan solo en ese navegador. En *Más → Ajustes → Cargar datos de ejemplo* puedes verla con ventas de prueba.
+Sin configurar nada, la app funciona en **modo demo**: los datos **y los usuarios** se guardan solo en ese navegador. La primera vez pide crear la cuenta del Dueño y después funciona el mismo inicio de sesión que con Firebase. En *Más → Ajustes → Cargar datos de ejemplo* puedes verla con ventas de prueba.
 
 Para abrirla en tu computadora:
 

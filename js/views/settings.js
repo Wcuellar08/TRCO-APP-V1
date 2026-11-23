@@ -22,13 +22,13 @@ export function render(page) {
     <div class="section" style="margin-top:0"><h2>Mi cuenta</h2></div>
     <div class="card">
       <div class="kv"><span>Nombre</span><span>${esc(me?.name)}</span></div>
-      ${CLOUD ? `<div class="kv"><span>Usuario</span><span>@${esc(me?.username)}</span></div>` : ''}
+      <div class="kv"><span>Usuario</span><span>@${esc(me?.username)}</span></div>
       <div class="kv"><span>Rol</span><span>${ROLE_LABEL[me?.role] || ''}</span></div>
       <div class="kv"><span>Datos</span><span>${CLOUD ? 'En la nube (Firebase)' : 'Solo este dispositivo (demo)'}</span></div>
     </div>
 
     ${owner ? '<div class="btn-row"><a class="btn" href="#usuarios">Gestionar usuarios y permisos</a></div>' : ''}
-    ${CLOUD && !owner ? '<p class="muted small">¿Necesitas cambiar tu contraseña? Pídeselo al Dueño.</p>' : ''}
+    ${!owner ? '<p class="muted small">¿Necesitas cambiar tu contraseña? Pídeselo al Dueño.</p>' : ''}
 
     ${owner ? `
     <div class="section"><h2>Catálogos</h2></div>
@@ -67,7 +67,7 @@ export function render(page) {
       La app TRCO aparece como ícono y se abre en pantalla completa.
     </div>
 
-    ${CLOUD ? '<div class="btn-row"><button class="btn danger" id="logout">Cerrar sesión</button></div>' : ''}
+    <div class="btn-row"><button class="btn danger" id="logout">Cerrar sesión</button></div>
   `;
 
 
@@ -149,7 +149,7 @@ export function render(page) {
   const wipe = $('#wipe', page);
   if (wipe)
     wipe.onclick = async () => {
-      if (!(await confirmAction('¿Borrar TODOS los datos del demo? No se puede deshacer.', { ok: 'Borrar', danger: true }))) return;
+      if (!(await confirmAction('¿Borrar todos los datos del demo (ventas, inventario, clientes…)? Los usuarios se conservan. No se puede deshacer.', { ok: 'Borrar', danger: true }))) return;
       demoReset();
       await refresh();
       toast('Datos borrados');

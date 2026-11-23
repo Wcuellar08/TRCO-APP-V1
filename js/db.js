@@ -62,8 +62,6 @@ const local = {
     }
     for (const t of TABLES) this.data[t] ??= [];
     if (!this.data.settings.length) this.data.settings = [{ id: 1, data: { ...DEFAULT_SETTINGS } }];
-    if (!this.data.profiles.length)
-      this.data.profiles = [{ id: 'demo', username: 'demo', name: 'Dueño (demo)', role: 'owner', active: true }];
     return this.data;
   },
   save() {
@@ -75,19 +73,25 @@ const local = {
     }
   },
   async session() {
-    return { id: 'demo', email: 'demo@trco' };
+    const id = localSession.get();
+    return id && this.read().profiles.some((p) => p.id === id) ? { id } : null;
   },
   async all(t) {
-    return structuredClone(this.read()[t]);
+    const rows = structuredClone(this.read()[t]);
+    if (t === 'profiles') rows.forEach((r) => delete r.pw_hash);
+    return rows;
   },
   async getOne(t, id) {
     const row = this.read()[t].find((r) => String(r.id) === String(id));
-    return row ? structuredClone(row) : null;
+    if (!row) return null;
+    const out = structuredClone(row);
+    delete out.pw_hash;
+    return out;
   },
   async insert(t, rows) {
     const d = this.read();
     const now = new Date().toISOString();
-    const out = rows.map((r) => ({ id: uuid(), created_at: now, ...(t === 'sales' ? { created_by: 'demo' } : {}), ...r }));
+    const out = rows.map((r) => ({ id: uuid(), created_at: now, ...(t === 'sales' ? { created_by: localSession.get() } : {}), ...r }));
     d[t].push(...out);
     this.save();
     return structuredClone(out);
@@ -116,15 +120,156 @@ const local = {
     this.save();
   },
   replaceAll(data) {
+    // Los usuarios del dispositivo se conservan al cargar datos de ejemplo o un respaldo.
+    data.profiles = this.read().profiles;
     this.data = data;
     this.read();
     this.save();
   },
+  // Borra los datos del negocio pero conserva los usuarios del dispositivo.
   reset() {
+    const keep = this.read().profiles;
     try {
       localStorage.removeItem(LS_KEY);
     } catch {}
     this.data = null;
+    this.read().profiles = keep;
+    this.save();
+  },
+};
+
+// ── Usuarios en modo demo (solo este dispositivo) ──
+// Mismo flujo que con Firebase, para probarlo antes de conectar la nube.
+const SESSION_KEY = 'trco-demo-session';
+let memSession = null;
+const localSession = {
+  get() {
+    try {
+      return localStorage.getItem(SESSION_KEY) || memSession;
+    } catch {
+      return memSession;
+    }
+  },
+  set(id) {
+    memSession = id;
+    try {
+      if (id) localStorage.setItem(SESSION_KEY, id);
+      else localStorage.removeItem(SESSION_KEY);
+    } catch {}
+  },
+};
+
+async function hashPassword(username, password) {
+  const text = `trco:${username}:${password}`;
+  if (crypto.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 0;
+  for (const c of text) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0;
+  return 'x' + (h >>> 0).toString(16);
+}
+
+const PERMISSION_KEYS = ['vender', 'editar_ventas', 'borrar_ventas', 'inventario', 'produccion', 'clientes', 'reportes', 'costos', 'gastos', 'exportar'];
+const bad = (msg) => {
+  throw new Error(msg);
+};
+const validUsername = (u) => {
+  const name = cleanUsername(u);
+  if (!/^[a-z0-9._-]{3,30}$/.test(name)) bad('El usuario debe tener de 3 a 30 letras, números, punto, guion o guion bajo (sin espacios ni acentos).');
+  return name;
+};
+const validName = (n) => String(n || '').trim() || bad('Escribe el nombre de la persona.');
+const validPassword = (p) => (String(p || '').length >= 6 ? String(p) : bad('La contraseña debe tener al menos 6 caracteres.'));
+const cleanPerms = (o) => Object.fromEntries(PERMISSION_KEYS.map((k) => [k, Boolean(o?.[k])]));
+
+const localAuth = {
+  profiles: () => local.read().profiles,
+  find: (id) => local.read().profiles.find((p) => p.id === id),
+  activeOwners: () => local.read().profiles.filter((p) => p.role === 'owner' && p.active !== false && p.pw_hash).length,
+  requireOwner() {
+    const me = this.find(localSession.get());
+    if (!me || me.role !== 'owner' || me.active === false) bad('Solo un Dueño puede gestionar usuarios.');
+    return me;
+  },
+  ownerExists() {
+    return this.profiles().some((p) => p.role === 'owner' && p.pw_hash);
+  },
+  async createOwner({ username, name, password }) {
+    if (this.ownerExists()) bad('La cuenta del Dueño ya fue creada. Inicia sesión.');
+    const u = validUsername(username);
+    const row = {
+      username: u,
+      name: validName(name),
+      role: 'owner',
+      permissions: cleanPerms({}),
+      active: true,
+      must_change_password: false,
+      pw_hash: await hashPassword(u, validPassword(password)),
+    };
+    // Si ya había datos del demo anterior, se conservan con este Dueño.
+    const old = this.find('demo');
+    if (old) Object.assign(old, row);
+    else this.profiles().push({ id: uuid(), created_at: new Date().toISOString(), ...row });
+    local.save();
+    localSession.set(old ? 'demo' : this.profiles().at(-1).id);
+  },
+  async signIn(username, password) {
+    const u = cleanUsername(username);
+    const p = this.profiles().find((x) => x.username === u && x.pw_hash);
+    if (!p || p.pw_hash !== (await hashPassword(u, password))) bad('Usuario o contraseña incorrectos');
+    if (p.active === false) bad('Tu usuario está desactivado. Habla con el Dueño.');
+    localSession.set(p.id);
+  },
+  async changeMyPassword(password) {
+    const me = this.find(localSession.get());
+    me.pw_hash = await hashPassword(me.username, validPassword(password));
+    me.must_change_password = false;
+    local.save();
+  },
+  async create(data) {
+    this.requireOwner();
+    const u = validUsername(data.username);
+    if (this.profiles().some((p) => p.username === u)) bad(`El usuario "${u}" ya existe. Elige otro.`);
+    this.profiles().push({
+      id: uuid(),
+      username: u,
+      name: validName(data.name),
+      role: data.role === 'owner' ? 'owner' : 'colaborador',
+      permissions: cleanPerms(data.permissions),
+      active: true,
+      must_change_password: true,
+      pw_hash: await hashPassword(u, validPassword(data.password)),
+      created_at: new Date().toISOString(),
+    });
+    local.save();
+  },
+  async update(data) {
+    const me = this.requireOwner();
+    const p = this.find(data.uid) || bad('Ese usuario no existe.');
+    const role = data.role ?? p.role;
+    const active = data.active ?? p.active !== false;
+    const losesOwner = p.role === 'owner' && p.active !== false && (role !== 'owner' || !active);
+    if (losesOwner && p.id === me.id) bad('No puedes quitarte tu propio rol de Dueño ni desactivarte.');
+    if (losesOwner && this.activeOwners() <= 1) bad('Debe quedar al menos un Dueño activo.');
+    Object.assign(p, { name: validName(data.name ?? p.name), role, active, permissions: cleanPerms(data.permissions ?? p.permissions) });
+    local.save();
+  },
+  async resetPassword(uid, password) {
+    const me = this.requireOwner();
+    if (uid === me.id) bad('Para tu propia contraseña usa "Cambiar mi contraseña".');
+    const p = this.find(uid) || bad('Ese usuario no existe.');
+    p.pw_hash = await hashPassword(p.username, validPassword(password));
+    p.must_change_password = true;
+    local.save();
+  },
+  async remove(uid) {
+    const me = this.requireOwner();
+    if (uid === me.id) bad('No puedes eliminar tu propia cuenta.');
+    const p = this.find(uid) || bad('Ese usuario no existe.');
+    if (p.role === 'owner' && p.active !== false && this.activeOwners() <= 1) bad('Debe quedar al menos un Dueño activo.');
+    local.read().profiles = this.profiles().filter((x) => x.id !== uid);
+    local.save();
   },
 };
 
@@ -273,6 +418,7 @@ async function call(name, data) {
 }
 
 export async function signIn(username, password) {
+  if (!CLOUD) return localAuth.signIn(username, password);
   const f = await firebase();
   try {
     await f.signInWithEmailAndPassword(f.auth, emailOf(username), password);
@@ -283,17 +429,24 @@ export async function signIn(username, password) {
 
 // ¿Ya existe la cuenta del Dueño? (Si no, la app muestra la pantalla de primera vez.)
 export async function ownerExists() {
+  if (!CLOUD) return localAuth.ownerExists();
   const f = await firebase();
   return (await f.getDoc(f.doc(f.fs, 'meta', 'owner'))).exists();
 }
 
 export async function createOwner({ username, name, password }) {
+  if (!CLOUD) return localAuth.createOwner({ username, name, password });
   await call('bootstrapOwner', { username: cleanUsername(username), name, password });
   await signIn(username, password);
 }
 
 // Cambiar mi contraseña (solo cuando el Dueño me asignó una temporal).
 export async function changeMyPassword(newPassword) {
+  if (!CLOUD) {
+    await localAuth.changeMyPassword(newPassword);
+    state.profile.must_change_password = false;
+    return;
+  }
   const f = await firebase();
   try {
     await f.updatePassword(f.auth.currentUser, newPassword);
@@ -305,18 +458,25 @@ export async function changeMyPassword(newPassword) {
 }
 
 // ── Gestión de usuarios (solo Dueño; se ejecuta en Cloud Functions) ──
-export const users = {
-  create: (data) => call('createUser', { ...data, username: cleanUsername(data.username) }),
-  update: (data) => call('updateUser', data),
-  resetPassword: (uid, password) => call('resetPassword', { uid, password }),
-  remove: (uid) => call('deleteUser', { uid }),
-};
+export const users = CLOUD
+  ? {
+      create: (data) => call('createUser', { ...data, username: cleanUsername(data.username) }),
+      update: (data) => call('updateUser', data),
+      resetPassword: (uid, password) => call('resetPassword', { uid, password }),
+      remove: (uid) => call('deleteUser', { uid }),
+    }
+  : {
+      create: (data) => localAuth.create(data),
+      update: (data) => localAuth.update(data),
+      resetPassword: (uid, password) => localAuth.resetPassword(uid, password),
+      remove: (uid) => localAuth.remove(uid),
+    };
 
 export async function signOut() {
   if (CLOUD) {
     const f = await firebase();
     await f.signOut(f.auth);
-  }
+  } else localSession.set(null);
   location.hash = '';
   location.reload();
 }
@@ -355,7 +515,7 @@ export async function refresh(tables = TABLES) {
 
 export async function loadAll(user) {
   state.user = user;
-  state.profile = await db.getOne('profiles', CLOUD ? user.id : 'demo');
+  state.profile = await db.getOne('profiles', user.id);
   if (!state.profile) return 'sin_perfil';
   if (state.profile.active === false) return 'inactivo';
   if (state.profile.must_change_password) return 'cambiar_clave';
@@ -455,6 +615,7 @@ export function demoReset() {
 export function exportData() {
   const out = { app: 'TRCO', version: 1, exported_at: new Date().toISOString() };
   for (const t of TABLES) out[t] = t === 'settings' ? [{ id: 1, data: state.settings }] : state[t];
+  delete out.profiles; // los usuarios no van en el respaldo
   return out;
 }
 

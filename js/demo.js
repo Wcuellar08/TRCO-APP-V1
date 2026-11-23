@@ -121,7 +121,7 @@ export function buildDemoData() {
         paid: status === 'apartado' ? Math.round(total / 2) : total,
         tracking: '',
         notes: '',
-        created_by: 'demo',
+        created_by: null,
         created_at: `${date}T${String(10 + k).padStart(2, '0')}:00:00.000Z`,
       });
       items.forEach((i) => sale_items.push({ ...i, sale_id: sid }));
@@ -146,7 +146,6 @@ export function buildDemoData() {
 
   return {
     settings: [{ id: 1, data: { ...DEFAULT_SETTINGS } }],
-    profiles: [{ id: 'demo', username: 'demo', name: 'Dueño (demo)', role: 'owner', active: true }],
     drops,
     products,
     customers,

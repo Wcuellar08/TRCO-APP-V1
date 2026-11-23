@@ -34,7 +34,7 @@ export function render(page) {
 
   page.innerHTML = `
     <p class="muted small" style="margin-top:0">Tú creas los usuarios con una contraseña temporal. Al entrar por primera vez, cada quien pone la suya. Si alguien la olvida, aquí le asignas una nueva.</p>
-    ${!CLOUD ? `<div class="alert info" style="margin-bottom:12px">Los usuarios se activan cuando conectemos Firebase. En modo demo solo existe el Dueño, pero puedes ver cómo se configuran los permisos.</div>` : ''}
+    ${!CLOUD ? `<div class="alert info" style="margin-bottom:12px">Modo demo: estos usuarios existen solo en este dispositivo. Cuando conectemos Firebase, cada quien entrará desde su propio teléfono.</div>` : ''}
     <div class="btn-row"><button class="btn primary" id="new">+ Nuevo usuario</button></div>
     <div class="section"><h2>Usuarios (${list.length})</h2></div>
     ${
@@ -123,11 +123,6 @@ function openUser(id) {
       const roleSel = $('#u-role', root);
       roleSel.onchange = () => $('#perm-box', root).classList.toggle('hidden', roleSel.value === 'owner');
       const readPerms = () => Object.fromEntries($$('[data-perm]', root).map((c) => [c.dataset.perm, c.checked]));
-      const guard = () => {
-        if (CLOUD) return true;
-        toast('Disponible cuando conectemos Firebase');
-        return false;
-      };
       const showCreds = (username, password) => {
         form.classList.add('hidden');
         $('#result', root).innerHTML = `${credentialsCard(username, password)}<button class="btn primary block" type="button" id="done" style="margin-top:12px">Listo</button>`;
@@ -140,7 +135,6 @@ function openUser(id) {
 
       form.onsubmit = async (e) => {
         e.preventDefault();
-        if (!guard()) return;
         const btn = form.querySelector('[type=submit]');
         btn.disabled = true;
         try {
@@ -173,8 +167,7 @@ function openUser(id) {
       const reset = $('#reset', root);
       if (reset)
         reset.onclick = async () => {
-          if (!guard()) return;
-          if (!(await confirmAction(`¿Asignar una contraseña temporal nueva a ${u.name}? Se cerrará su sesión y la que tenía dejará de funcionar.`, { ok: 'Asignar' }))) return;
+            if (!(await confirmAction(`¿Asignar una contraseña temporal nueva a ${u.name}? Se cerrará su sesión y la que tenía dejará de funcionar.`, { ok: 'Asignar' }))) return;
           const password = tempPassword();
           try {
             await users.resetPassword(u.id, password);
@@ -188,8 +181,7 @@ function openUser(id) {
       const del = $('#del', root);
       if (del)
         del.onclick = async () => {
-          if (!guard()) return;
-          if (!(await confirmAction(`¿Eliminar a ${u.name}? Ya no podrá entrar. Las ventas que registró se conservan. Si solo es temporal, mejor desmarca "Usuario activo".`, { ok: 'Eliminar', danger: true }))) return;
+            if (!(await confirmAction(`¿Eliminar a ${u.name}? Ya no podrá entrar. Las ventas que registró se conservan. Si solo es temporal, mejor desmarca "Usuario activo".`, { ok: 'Eliminar', danger: true }))) return;
           try {
             await users.remove(u.id);
             await refresh(['profiles']);
