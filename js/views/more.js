@@ -57,6 +57,7 @@ export function toggleUserMenu() {
       <div class="umenu-head">
         <span class="avatar lg">${esc(initial(p.name))}</span>
         <div><b>${esc(p.name || '')}</b><small>@${esc(p.username || '')} · ${esc(ROLE_LABEL[p.role] || '')}${CLOUD ? '' : ' · Demo'}</small></div>
+        <button class="umenu-out" type="button" id="menu-logout-top" aria-label="Cerrar sesión">${icons.logout}<span>Salir</span></button>
       </div>
       <div class="umenu-list">${list
         .map(
@@ -79,6 +80,7 @@ export function toggleUserMenu() {
       })
   );
   $('#menu-logout', wrap).onclick = signOut;
+  $('#menu-logout-top', wrap).onclick = signOut;
   const onKey = (e) => e.key === 'Escape' && closeMenu(wrap);
   document.addEventListener('keydown', onKey);
   wrap._off = () => document.removeEventListener('keydown', onKey);
