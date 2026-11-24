@@ -23,10 +23,10 @@ import * as preordersView from './views/preorders.js';
 import { activeEvent } from './eventmode.js';
 
 const routes = {
-  inicio: { view: dashboard, title: 'Inicio', tab: 'inicio', wide: true },
+  inicio: { view: dashboard, title: 'Inicio', tab: 'inicio' },
   inventario: { view: inventory, title: 'Inventario', tab: 'inventario' },
   ventas: { view: sales, title: 'Pedidos', tab: 'ventas' },
-  reportes: { view: reports, title: 'Reportes', tab: 'reportes', perm: 'reportes' },
+  reportes: { view: reports, title: 'Reportes', tab: 'reportes', perm: 'reportes', wide: true },
   clientes: { view: customers, title: 'Clientes', tab: 'clientes', perm: 'clientes' },
   produccion: { view: production, title: 'Producción', tab: 'produccion' },
   gastos: { view: expenses, title: 'Gastos', perm: 'gastos' },

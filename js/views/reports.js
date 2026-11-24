@@ -1,4 +1,5 @@
 import { state, can, isOwner, soldLines, dropById, customerById } from '../db.js';
+import { slices, donut, bindDonuts } from '../donuts.js';
 import {
   $, $$, esc, Q, Qs, int, pct, today, addDays, parseYmd, ymd, startOfMonth, endOfMonth, startOfWeek, MONTHS, WEEKDAYS,
   sumBy, groupSum, barList, columnChart, bindColumnTips, downloadFile, toCSV, fmtDate,
@@ -86,11 +87,15 @@ export function render(page) {
 
   // Desgloses
   const byProduct = ranked(groupSum(lines, (l) => l.product_name, val));
-  const byType = ranked(groupSum(lines, (l) => l.type || l.product?.type, val));
+  const donutData = {
+    canal: slices(lines, (l) => l.sale.channel, metric),
+    talla: slices(lines, (l) => l.size, metric),
+    tipo: slices(lines, (l) => l.type || l.product?.type, metric),
+    drop: slices(lines, (l) => dropById(l.product?.drop_id)?.name || 'Sin drop', metric),
+    color: slices(lines, (l) => l.product?.color, metric),
+  };
   const bySize = ranked(groupSum(lines, (l) => l.size, val));
-  const byColor = ranked(groupSum(lines, (l) => l.product?.color, val));
   const byChannel = ranked(groupSum(lines, (l) => l.sale.channel, val));
-  const byDrop = ranked(groupSum(lines, (l) => dropById(l.product?.drop_id)?.name || 'Sin drop', val));
   const byPay = ranked(groupSum(lines, (l) => l.sale.payment_method, val));
   const promoMap = new Map();
   for (const s of sales.filter((x) => x.promo_name)) {
@@ -141,10 +146,17 @@ export function render(page) {
       <p class="muted small" style="margin:10px 0 0">Envíos cobrados a clientes: ${Q(shippingCharged)}. Invertido en producción en este periodo: ${Q(prodInvest)} (es inventario, no gasto: se cuenta como costo cuando la prenda se vende).</p>
     </div>` : ''}
 
-    <div class="section"><h2>Ver por</h2></div>
-    <div class="chips">
-      <button class="chip ${metric === 'revenue' ? 'active' : ''}" data-m="revenue">Dinero (Q)</button>
-      <button class="chip ${metric === 'units' ? 'active' : ''}" data-m="units">Prendas</button>
+    <div class="section"><h2>¿Qué se vende?</h2></div>
+    <div class="chips" style="margin-bottom:10px">
+      <button class="chip ${metric === 'revenue' ? 'active' : ''}" data-m="revenue">En dinero (Q)</button>
+      <button class="chip ${metric === 'units' ? 'active' : ''}" data-m="units">En prendas</button>
+    </div>
+    <div class="donuts">
+      ${donut('canal', 'Por canal', donutData.canal, metric)}
+      ${donut('talla', 'Por talla', donutData.talla, metric)}
+      ${donut('tipo', 'Por tipo de prenda', donutData.tipo, metric)}
+      ${donut('drop', 'Por drop', donutData.drop, metric)}
+      ${donut('color', 'Por color', donutData.color, metric)}
     </div>
 
     <div class="section"><h2>Ventas por ${b.unit}</h2></div>
@@ -155,18 +167,8 @@ export function render(page) {
 
     <div class="section"><h2>Productos más vendidos</h2></div>
     <div class="card">${barList(byProduct, { fmt, max: 10 })}</div>
-    <div class="section"><h2>Por tipo de prenda</h2></div>
-    <div class="card">${barList(byType, { fmt })}</div>
-    <div class="section"><h2>Por talla</h2></div>
-    <div class="card">${barList(bySize, { fmt, max: 10 })}</div>
-    <div class="section"><h2>Por color</h2></div>
-    <div class="card">${barList(byColor, { fmt })}</div>
     <div class="section"><h2>Por día de la semana</h2></div>
     <div class="card">${barList(byWeekday, { fmt, max: 7 })}</div>
-    <div class="section"><h2>Por canal de venta</h2></div>
-    <div class="card">${barList(byChannel, { fmt })}</div>
-    <div class="section"><h2>Por drop / colección</h2></div>
-    <div class="card">${barList(byDrop, { fmt })}</div>
     ${byEvent.length ? `<div class="section"><h2>Por evento</h2><a href="#eventos">Eventos</a></div>
     <div class="card">${barList(byEvent, { fmt })}</div>` : ''}
     ${byPromo.length ? `<div class="section"><h2>Descuento dado por promoción</h2>${isOwnerNow ? '<a href="#promos">Promociones</a>' : ''}</div>
@@ -192,6 +194,7 @@ export function render(page) {
     $('#to', page).onchange = (e) => ((custom.to = e.target.value || custom.to), render(page));
   }
   bindColumnTips(page);
+  bindDonuts(page, donutData, metric);
 
   const csvBtn = $('#csv', page);
   if (csvBtn) csvBtn.onclick = () => {
